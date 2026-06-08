@@ -1,0 +1,59 @@
+# ====== 環境與機敏資料 ======
+.env
+.env.local
+.env*.local
+.env.example
+
+# ====== 開發工具與 IDE ======
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.atom/
+.svn/
+
+# ====== 虛擬環境 ======
+.venv/
+venv/
+
+# ====== 作業系統 ======
+.DS_Store
+Thumbs.db
+
+# ====== 日誌 ======
+*.log
+logs/
+
+# ====== 資料檔案 ======
+*.db
+*.sqlite
+*.sqlite3
+data-with-latlng.json
+geocode-cache.json
+
+# ====== Flutter / Dart ======
+flutter_codefest/.dart_tool/
+flutter_codefest/.pub/
+flutter_codefest/.pub-cache/
+flutter_codefest/.flutter-plugins-dependencies
+flutter_codefest/build/
+flutter_codefest/coverage/
+flutter_codefest/**/doc/api/
+flutter_codefest/**/ios/Flutter/.last_build_id
+flutter_codefest/app.*.symbols
+flutter_codefest/app.*.map.json
+flutter_codefest/android/app/debug
+flutter_codefest/android/app/profile
+flutter_codefest/android/app/release
+flutter_codefest/.packages
+flutter_codefest/.pub-preload-cache/
+
+# ====== Dart Server ======
+server/.dart_tool/
+server/.packages
+server/build/
+server/logs/
+
+# ====== Node.js (相容) ======
+node_modules/
