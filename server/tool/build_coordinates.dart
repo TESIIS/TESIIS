@@ -14,14 +14,19 @@
 // coverage report. Run it when upstream data changes:
 //
 //     dart run tool/build_coordinates.dart --report
-//     dart run tool/build_coordinates.dart --overpass   # also try OSM for the rest
 //
 // Downloads are cached under tool/.cache/ (gitignored) so reruns are offline.
 //
 // Sources and licences (see NOTICE.md):
 //   - 消防署避難收容處所點位檔          政府資料開放授權條款第 1 版
 //   - 北市警政APP_防空避難設備位置      政府資料開放授權條款第 1 版
-//   - OpenStreetMap via Overpass       ODbL  (opt-in, --overpass)
+//
+// --overpass additionally queries OpenStreetMap for whatever is left over. It
+// is opt-in and the committed table is NOT built with it: OSM is ODbL, which is
+// share-alike, so one run would put the whole CSV under a copyleft licence. The
+// committed table trades 2.5 points of coverage (92.3% instead of 94.8%) for a
+// licence that is purely 政府資料開放授權條款第 1 版. Do not flip this default
+// without updating NOTICE.md and README.md.
 
 import 'dart:convert';
 import 'dart:io';
@@ -267,7 +272,11 @@ class _Resolver {
 
   /// How far apart two house numbers may be before the interpolation is
   /// meaningless. Taipei numbering runs roughly 8-15 buildings per 100 m, so
-  /// 40 keeps the error to a few hundred metres at worst.
+  /// 40 bounds the error at a few hundred metres for ordinary street
+  /// addresses. Measured against known-good points the spread is 40-761 m,
+  /// median ~200 m — the tail is parks and underground malls, where the
+  /// address is one corner of a site that spans several hundred metres.
+  /// Anything relying on this must say "數百公尺", not "數十公尺".
   static const _maxHouseNumberGap = 40;
 
   void _indexStreet(String normalizedAddress, _Candidate candidate) {

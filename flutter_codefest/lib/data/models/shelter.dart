@@ -67,7 +67,7 @@ class Shelter {
   final String remarks;
 
   /// 座標y. Null for the shelters the coordinate table could not locate —
-  /// about 5% of the dataset, mostly parks and intersections whose 門牌地址 is
+  /// about 8% of the dataset, mostly parks and intersections whose 門牌地址 is
   /// a description rather than an address.
   final double? latitude;
 

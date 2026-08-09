@@ -25,7 +25,7 @@ void main() {
 
   group('locatableShelters', () {
     test('drops shelters with no coordinate', () {
-      // About 5% of the dataset: parks and intersections whose 門牌地址 is a
+      // About 8% of the dataset: parks and intersections whose 門牌地址 is a
       // description rather than an address.
       final shelters = [
         fakeShelter(id: 1, lat: 25.05, lng: 121.52),

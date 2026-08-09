@@ -22,7 +22,8 @@ double distanceToShelter(Shelter shelter, double lat, double lon) =>
 
 /// Shelters that can actually be placed on a map.
 ///
-/// About 5% of the dataset has no coordinate. Those are still worth listing —
+/// About 8% of the dataset (31 of 401) has no coordinate. Those are still
+/// worth listing —
 /// see the "尚無座標" handling in the UI — but they cannot be sorted by
 /// distance, so distance-based helpers drop them.
 List<Shelter> locatableShelters(List<Shelter> shelters) => shelters

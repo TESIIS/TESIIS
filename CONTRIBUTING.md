@@ -59,7 +59,7 @@ cd server
 dart pub get
 dart run bin/server.dart          # 預設 port 8080
 dart analyze                      # 應為 0 issues
-dart test                         # 應為 85 passed
+dart test                         # 應為 96 passed
 
 # --- 前端 ---
 cd flutter_codefest
@@ -92,14 +92,16 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 
 ### 2. 座標不是上游來的
 
-臺北市 OpenData 這個資料集**不回傳任何座標欄位**。地圖上每一個點都來自 [`server/data/shelter_coordinates.csv`](server/data/shelter_coordinates.csv)，由 [`server/tool/build_coordinates.dart`](server/tool/build_coordinates.dart) 離線 join 三個資料集產生並進版控。
+臺北市 OpenData 這個資料集**不回傳任何座標欄位**。地圖上每一個點都來自 [`server/data/shelter_coordinates.csv`](server/data/shelter_coordinates.csv)，由 [`server/tool/build_coordinates.dart`](server/tool/build_coordinates.dart) 離線 join 兩個政府開放資料集產生並進版控。
 
 上游資料更新後重建：
 
 ```bash
 cd server
-dart run tool/build_coordinates.dart --refresh --overpass --report
+dart run tool/build_coordinates.dart --refresh --report
 ```
+
+> **不要加 `--overpass`。** 那個旗標會用 OpenStreetMap 補齊剩下的點，覆蓋率能多 2.5 個百分點，但產出的 CSV 會落入 ODbL（share-alike，具傳染性），使 [NOTICE.md](NOTICE.md) 目前「只含政府開放資料」的授權結論失效。帶著 `--overpass` 重建的成果不會被接受。
 
 改動地址正規化規則時務必跑 `dart test`——`coordinate_source_test.dart` 會檢查覆蓋率沒有掉下去。
 

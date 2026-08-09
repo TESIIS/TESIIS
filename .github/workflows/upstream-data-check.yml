@@ -44,7 +44,7 @@ jobs:
           coverage=$(grep -oE 'With coordinates:.*\(([0-9.]+)%\)' /tmp/report.txt \
                      | grep -oE '[0-9.]+%' | tr -d '%')
           echo "Live coverage: ${coverage}%"
-          # The committed table sits at ~94.8%; anything under 85% means
+          # The committed table sits at ~92.3%; anything under 85% means
           # upstream changed in a way that broke the address join.
           awk -v c="$coverage" 'BEGIN { exit (c >= 85) ? 0 : 1 }' \
             || { echo "::error::Coordinate coverage fell to ${coverage}%"; exit 1; }
@@ -55,6 +55,6 @@ jobs:
             echo "Committed coordinate table is up to date."
           else
             echo "::warning::Upstream data has changed. Run:"
-            echo "  cd server && dart run tool/build_coordinates.dart --refresh --overpass --report"
+            echo "  cd server && dart run tool/build_coordinates.dart --refresh --report"
             diff data/shelter_coordinates.csv /tmp/shelter_coordinates.csv | head -40 || true
           fi
