@@ -77,3 +77,9 @@ server/logs/
 
 # ====== Node.js (相容) ======
 node_modules/
+
+# ====== Claude Code 的本機工作指引 ======
+# 刻意不進版控：內容是給 AI agent 的操作指引，不是給使用者的專案文件。
+# CHANGELOG.md 與 NOTICE.md 必須留在版控中——NOTICE.md 是資料再散布時的
+# 來源標示落點，README 與 LICENSE 都指向它。
+CLAUDE.md
