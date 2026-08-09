@@ -1,0 +1,59 @@
+#!/bin/sh
+#
+# Blocks the two mistakes that cannot be undone once pushed to a public repo:
+# committing a secret, and committing a file that should never leave the
+# machine. See CONTRIBUTING.md → 禁止提交清單.
+#
+# Install once per clone:
+#     git config core.hooksPath .githooks
+#
+# This is a safety net, not a substitute for reading your own diff. The same
+# checks run in CI (.github/workflows/ci.yml) so a bypassed hook still fails
+# the pull request.
+
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+# ---- 1. Files that must never be committed --------------------------------
+forbidden=$(printf '%s\n' "$staged" | grep -Ei \
+  '(^|/)\.env$|(^|/)\.env\..+|\.db$|\.sqlite3?$|\.keystore$|\.jks$|\.p12$|\.pem$|\.mobileprovision$|google-services\.json$|GoogleService-Info\.plist$|local\.properties$|(^|/)env\.js$' \
+  | grep -v '\.env\.example$' || true)
+
+if [ -n "$forbidden" ]; then
+  echo "✖ These files must not be committed:"
+  printf '  %s\n' $forbidden
+  echo "  (see CONTRIBUTING.md → 禁止提交清單)"
+  fail=1
+fi
+
+# ---- 2. Secret-shaped strings in the staged content ------------------------
+# Deliberately narrow: patterns with a distinctive prefix and a length floor,
+# so ordinary code and documentation do not trip it.
+patterns='AIza[0-9A-Za-z_-]{30,}|ya29\.[0-9A-Za-z_-]{20,}|sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|aws_secret_access_key\s*=|"type"\s*:\s*"service_account"'
+
+for file in $staged; do
+  # Skip this hook itself and the docs that describe the patterns.
+  case "$file" in
+    .githooks/pre-commit|CONTRIBUTING.md|SECURITY.md) continue ;;
+  esac
+  [ -f "$file" ] || continue
+
+  if hits=$(git show ":$file" 2>/dev/null | grep -nEo "$patterns" | head -3) && [ -n "$hits" ]; then
+    echo "✖ $file looks like it contains a credential:"
+    printf '  line %s\n' "$hits" | cut -c1-80
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Commit aborted. If this is a false positive, re-run with --no-verify"
+  echo "AFTER confirming the content is safe to publish."
+  exit 1
+fi
+
+exit 0

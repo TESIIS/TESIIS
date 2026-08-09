@@ -43,3 +43,21 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ====== 機敏資料 ======
+# 這一段與 repo 根目錄的 .gitignore 重複是刻意的：如果 flutter_codefest/
+# 之後被拆成獨立 repo，保護不能跟著根目錄一起消失。
+# 完整說明見 CONTRIBUTING.md 的「禁止提交清單」。
+.env
+.env.local
+.env*.local
+!.env.example
+web/env.js
+*.keystore
+*.jks
+*.p12
+*.pem
+*.mobileprovision
+**/google-services.json
+**/GoogleService-Info.plist
+**/local.properties
