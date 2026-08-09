@@ -272,7 +272,11 @@ class _Resolver {
 
   /// How far apart two house numbers may be before the interpolation is
   /// meaningless. Taipei numbering runs roughly 8-15 buildings per 100 m, so
-  /// 40 keeps the error to a few hundred metres at worst.
+  /// 40 bounds the error at a few hundred metres for ordinary street
+  /// addresses. Measured against known-good points the spread is 40-761 m,
+  /// median ~200 m — the tail is parks and underground malls, where the
+  /// address is one corner of a site that spans several hundred metres.
+  /// Anything relying on this must say "數百公尺", not "數十公尺".
   static const _maxHouseNumberGap = 40;
 
   void _indexStreet(String normalizedAddress, _Candidate candidate) {

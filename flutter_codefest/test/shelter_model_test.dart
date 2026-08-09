@@ -73,7 +73,7 @@ void main() {
     });
 
     test('a shelter with no coordinate parses instead of throwing', () {
-      // ~5% of the dataset. These must stay listable.
+      // ~8% of the dataset. These must stay listable.
       final shelter = Shelter.fromJson(serverRow(x: null, y: null));
       expect(shelter.hasCoordinate, isFalse);
       expect(shelter.latitude, isNull);

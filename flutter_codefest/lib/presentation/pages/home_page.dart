@@ -1890,7 +1890,7 @@ class _MapScreenState extends State<MapScreen> {
   /// Tells the user how much to trust the position we are showing.
   ///
   /// The upstream dataset carries no coordinates at all — every point is
-  /// joined in from other government datasets. About 5% of shelters cannot be
+  /// joined in from other government datasets. About 8% of shelters cannot be
   /// located and roughly a fifth of the rest sit at an interpolated street
   /// position. Stating that is more honest than a map that looks uniformly
   /// precise, and it is exactly the sort of thing someone needs to know before
@@ -1903,7 +1903,7 @@ class _MapScreenState extends State<MapScreen> {
         Colors.orange,
       ),
       _ when !shelter.isCoordinateExact => (
-        '此位置為概略值(依鄰近門牌推估),實際入口可能相差數十公尺。',
+        '此位置為概略值(依鄰近門牌推估),實際入口可能相差數百公尺。',
         Icons.help_outline,
         Colors.amber,
       ),
