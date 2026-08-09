@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用於在地圖上顯示您的位置，並找出離您最近的避難收容處所。</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>用於在地圖上顯示您的位置，並找出離您最近的避難收容處所。</string>
 </dict>
 </plist>
