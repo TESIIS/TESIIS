@@ -1,30 +1,24 @@
-// This is a basic Flutter widget test.
+// Smoke test for the app shell.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// This file used to be the `flutter create` counter template, asserting on a
+// widget tree this app never had — so `flutter test` failed on a clean
+// checkout and nobody could tell a real failure from the default one.
+//
+// It stays deliberately shallow: MapScreen calls the backend and the platform
+// location service in initState, neither of which exists in a widget test.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flutter_codefest/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  testWidgets('使用手冊頁可以獨立渲染', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: UserManualPage()));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.byType(UserManualPage), findsOneWidget);
+    // Should render without throwing; a missing asset or a null-unsafe field
+    // would surface here.
+    expect(tester.takeException(), isNull);
   });
 }
