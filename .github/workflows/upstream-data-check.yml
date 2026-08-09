@@ -1,0 +1,60 @@
+name: Upstream data check
+
+# The whole system rests on assumptions about datasets published by other
+# agencies: which columns exist, which values appear in the hazard columns, and
+# how many records there are. Those change without notice, and when they do the
+# failure is silent — filters quietly return nothing, or the coordinate join
+# stops matching. This job notices instead.
+
+on:
+  schedule:
+    # Mondays 01:00 UTC (09:00 Taipei).
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: verify upstream schema and coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+
+      # Rebuilds the coordinate table from live upstream data into a scratch
+      # path, leaving the committed table untouched. A drop in coverage or a
+      # schema change shows up in the report.
+      - name: Rebuild coordinate table from live data
+        run: |
+          dart run tool/build_coordinates.dart \
+            --refresh --report \
+            --output /tmp/shelter_coordinates.csv | tee /tmp/report.txt
+
+      - name: Fail if coverage regressed
+        run: |
+          set -euo pipefail
+          coverage=$(grep -oE 'With coordinates:.*\(([0-9.]+)%\)' /tmp/report.txt \
+                     | grep -oE '[0-9.]+%' | tr -d '%')
+          echo "Live coverage: ${coverage}%"
+          # The committed table sits at ~94.8%; anything under 85% means
+          # upstream changed in a way that broke the address join.
+          awk -v c="$coverage" 'BEGIN { exit (c >= 85) ? 0 : 1 }' \
+            || { echo "::error::Coordinate coverage fell to ${coverage}%"; exit 1; }
+
+      - name: Diff against the committed table
+        run: |
+          if diff -q data/shelter_coordinates.csv /tmp/shelter_coordinates.csv > /dev/null; then
+            echo "Committed coordinate table is up to date."
+          else
+            echo "::warning::Upstream data has changed. Run:"
+            echo "  cd server && dart run tool/build_coordinates.dart --refresh --overpass --report"
+            diff data/shelter_coordinates.csv /tmp/shelter_coordinates.csv | head -40 || true
+          fi

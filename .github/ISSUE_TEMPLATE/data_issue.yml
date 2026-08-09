@@ -1,0 +1,57 @@
+name: 資料錯誤回報
+description: 避難所位置標錯、資訊有誤、或某個設施沒出現在地圖上
+labels: [data]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        本專案的座標**不是**上游資料集提供的——臺北市 OpenData 這個資料集完全沒有座標欄位。
+        每個點都是用門牌地址 join 其他政府資料集推得的，因此有已知誤差。詳見 [NOTICE.md](../blob/master/NOTICE.md)。
+
+        避難所的**名稱、地址、容納人數、聯絡人**等欄位直接來自臺北市 OpenData，
+        本專案不修改。這類錯誤請直接向 [臺北市資料大平臺](https://data.taipei/) 反映。
+
+  - type: input
+    id: shelter-code
+    attributes:
+      label: 收容所編號
+      description: 在避難所詳細資訊面板可以看到，或從 API 的 `收容所編號` 欄位取得。
+      placeholder: SA100-0002
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: 名稱
+      placeholder: 臺北市立螢橋國民中學
+    validations:
+      required: true
+
+  - type: dropdown
+    id: problem
+    attributes:
+      label: 問題類型
+      options:
+        - 地圖上完全沒有這個設施（無座標）
+        - 位置標錯地方
+        - 位置大致對但偏移數十公尺（概略座標）
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: correct-coords
+    attributes:
+      label: 正確座標（如果知道）
+      description: |
+        格式為 `經度, 緯度`（WGS84 十進位度）。可從任何公開地圖右鍵取得。
+        座標事實本身不受著作權保護，但請不要直接複製有授權限制的資料庫內容。
+      placeholder: '121.5265, 25.0190'
+
+  - type: textarea
+    id: app-notice
+    attributes:
+      label: App 顯示的座標提示
+      description: 詳細資訊面板上方是否有橘色或黃色提示？請貼上內容。
+      placeholder: 此位置為概略值(依鄰近門牌推估)，實際入口可能相差數十公尺。

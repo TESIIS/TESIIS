@@ -1,385 +1,284 @@
-# 北市避難設施資訊整合系統
+# 臺北市避難設施查詢系統
 
-一個以 **Flutter** 打造的地圖式避難設施查詢 App，搭配 **Dart/shelf** 後端 API 伺服器，整合搜尋、分類、距離計算、導航與告示提醒功能。
+用地圖找出離你最近的避難收容處所。2025 臺北程式設計節城市通微服務大黑客松 團隊 30 作品。
 
-> 本專案為 **臺北程式設計節城市通微服務大黑客松 2025** 團隊編號 30 之參賽作品。
+**Clone 下來就能跑，不需要任何 API key。**
 
----
+```bash
+git clone <repo>
+cd 2025Taipei-codefest-team30
 
-## 專案架構
+# 後端
+cd server && dart pub get && dart run bin/server.dart
 
+# 前端（另開一個終端機）
+cd flutter_codefest && flutter pub get
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 ```
-2025codefestteam30/
-├── flutter_codefest/          # Flutter 前端 App
-│   ├── lib/
-│   │   ├── main.dart                          # App 進入點
-│   │   ├── presentation/pages/
-│   │   │   ├── home_page.dart                 # 地圖主畫面與所有 UI 互動
-│   │   │   └── user_manual_page.dart          # 使用手冊頁面
-│   │   ├── core/utils/nearby_shelters.dart    # 附近設施計算邏輯
-│   │   ├── data/models/
-│   │   │   ├── shelter.dart                   # 避難設施資料模型
-│   │   │   ├── api_response.dart              # API 回應模型
-│   │   │   └── filter_model.dart              # 篩選條件模型
-│   │   ├── data/datasources/api.dart          # HTTP API 客戶端
-│   │   └── data/repositories/shelters_repository.dart  # 設施資料儲存庫
-│   ├── pubspec.yaml
-│   └── web/ android/ ios/ ...                 # 各平台工程
-│
-├── server/                    # Dart/shelf 後端 API
-│   ├── bin/server.dart                        # 伺服器進入點
-│   ├── lib/
-│   │   ├── core/                              # 核心模組（config、DI、logger、errors）
-│   │   ├── domain/                            # 領域層（entities、repositories、services）
-│   │   ├── data/                              # 資料層（datasources、repositories_impl、models）
-│   │   ├── presentation/                      # 表現層（routes、controllers、middlewares、responses）
-│   │   └── utils/                             # 工具類別
-│   ├── test/                                  # 單元測試與整合測試
-│   └── pubspec.yaml
-│
-└── README.md                  # 本檔案
+
+啟動後你應該看到後端印出：
+
+```text
+[DI] Coordinate table: data/shelter_coordinates.csv (380/401 shelters located, 94.8%)
+✅ Server running on http://0.0.0.0:8080
 ```
 
 ---
 
-## 特色功能
+## 這個專案在解什麼問題
 
-- **Google 地圖互動檢視**：全螢幕地圖，不隨鍵盤上移
-- **即時定位**：顯示目前位置與 1.5 公里範圍圈
-- **搜尋與篩選**：支援關鍵字搜尋與多選分類篩選（災害類型：土石流／海嘯／地震／水災；空間：室內／室外）
-- **分類按鈕列**：可左右滑動，兩側白色漸變提升可見度
-- **底部面板**：常駐顯示最近設施（約佔螢幕 25%），含名稱、地址、距離、類別標籤、快速導航與詳情按鈕
-- **使用手冊**：書本按鈕固定於右下角，隨時查看操作說明
-- **告示提醒**：
-  - 超出台北市範圍 → 橘色橫幅
-  - 定位成功 → 綠色橫幅（3 秒自動隱藏）
-  - 定位失敗 → 紅色橫幅
-  - 桌面寬螢幕 → 藍色提示建議使用手機比例
-- **後端 API**：從台北市 OpenData 擷取「避難收容處」資料，提供列表查詢與統計彙整 API
-- **Geocoding 快取**：伺服器端保留 SQLite 地理編碼索引以補足座標資料並加速查詢
+臺北市有 401 處避難收容處所，資料公開在[臺北市資料大平臺](https://data.taipei/dataset/detail?id=aaf97773-3631-40e2-b3cc-da87bf2ce1d5)。但那份資料**沒有任何座標欄位**——只有「汀州路三段四號」這種門牌地址，沒辦法直接畫在地圖上。
+
+本專案做三件事：
+
+1. **補上座標。** 離線 join 兩個政府開放資料集，把 401 筆中的 380 筆定位出來（94.8%），成果進版控，所以任何人 clone 下來立刻可用。
+2. **處理上游資料的怪癖。** 災害欄位不是單純 Y/N、里別分隔符不一致、數值欄位混雜中文說明——這些都在後端統一處理過。
+3. **免金鑰的地圖。** 底圖用內政部國土測繪中心的免費 WMTS 服務，不需要 Google Cloud 帳號。
 
 ---
 
-## 環境需求
+## 架構
 
-### 前端（Flutter App）
-- Flutter SDK 3.9.x（或相容版本）
-- Dart SDK（隨 Flutter 一併安裝）
-- Android Studio 或 Xcode（依目標平台而定）
-- Google Maps API Key（Android / iOS / Web 皆需配置）
+兩個各自獨立的 Dart package，沒有共用 package 或 monorepo 工具。
 
-### 後端（Dart Server）
-- Dart SDK 3.9.x
-- 無需資料庫（使用 SQLite 本地檔案 + 台北市 OpenData API）
+```text
+server/            Dart + shelf HTTP API
+  bin/server.dart          唯一的 wiring 點
+  lib/domain/entities/shelter_fields.dart   上游資料怪癖的單一處理點
+  lib/data/datasources/local/coordinate_source.dart   座標表載入
+  data/shelter_coordinates.csv              進版控的座標表（地圖的命脈）
+  tool/build_coordinates.dart               離線重建座標表
 
----
+flutter_codefest/  Flutter App
+  lib/core/map/basemap.dart                 NLSC 底圖設定
+  lib/presentation/pages/home_page.dart     單一畫面，所有地圖狀態
+  lib/data/models/shelter.dart              對應後端的中文 JSON key
+```
 
-## 主要套件
+請求流：
 
-### Flutter 前端
-| 套件 | 用途 |
-|------|------|
-| `google_maps_flutter` | 地圖顯示 |
-| `geolocator` | 取得使用者定位 |
-| `permission_handler` | 權限請求 |
-| `flutter_svg` | SVG 圖示渲染 |
-| `url_launcher` | 開啟 Google 地圖導航 |
-| `http` | HTTP 請求後端 API |
-
-### Dart 後端
-| 套件 | 用途 |
-|------|------|
-| `shelf` | HTTP 伺服器中介軟體 |
-| `shelf_router` | 路由 |
-| `shelf_cors_headers` | CORS 跨域支援 |
-| `http` | 向 OpenData API 發起請求 |
-| `sqlite3` | 本地地理編碼資料庫 |
-| `json_annotation` / `json_serializable` | JSON 序列化 |
-| `get_it` | 依賴注入 |
-| `logging` | 日誌紀錄 |
+```text
+Flutter → ShelterController → ShelterService → ShelterRepositoryImpl
+                                                 ├─ ShelterApi        (data.taipei，10 分鐘快取)
+                                                 └─ CoordinateSource  (本地 CSV 座標表)
+```
 
 ---
 
-## 快速開始
+## 座標從哪裡來
 
-### 1. 啟動後端伺服器
+這是整個專案最需要理解的一件事。
 
-```powershell
-# 進入伺服器目錄
+`server/data/shelter_coordinates.csv` 由 [`server/tool/build_coordinates.dart`](server/tool/build_coordinates.dart) 離線產生，流程：
+
+```text
+① 抓 臺北市可供避難收容處所一覽表        401 筆（無座標，這是要補的對象）
+② 抓 消防署避難收容處所點位檔            全國 5973 筆，臺北市 272 筆（有經緯度）
+③ 抓 北市警政APP_防空避難設備位置        6052 筆（有 座標x/座標y）
+④ bbox 品質閘：座標落在臺北以外者一律丟棄
+⑤ 以正規化門牌地址 join ② → 未命中者 join ③
+⑥ 殘餘者用 Overpass 依名稱查（公園、捷運站…）
+⑦ 再殘餘者用同路段最近門牌內插
+```
+
+重建：
+
+```bash
 cd server
-
-# 安裝相依套件
-dart pub get
-
-# 啟動伺服器（預設埠 8080）
-dart run bin/server.dart
-
-# 指定埠（例如 3000）
-dart run bin/server.dart 3000
-
-# 或使用環境變數
-$env:PORT = "3000"; dart run bin/server.dart
+dart run tool/build_coordinates.dart --report              # 只用官方資料
+dart run tool/build_coordinates.dart --overpass --report   # 加上 OSM 補齊
+dart run tool/build_coordinates.dart --refresh ...         # 忽略快取，重抓上游
 ```
 
-伺服器啟動後，可透過 `http://localhost:8080/api/shelters` 測試 API。
+### 座標品質（2026-08-09 實測）
 
-### 2. 啟動前端 App
+| 來源 | 筆數 | 說明 |
+|---|---|---|
+| `nfa_point_file` | 251 | 消防署點位檔，同類設施，最可信 |
+| `taipei_airraid` | 108 | 防空避難設備位置，同地址不同設施類別 |
+| `osm_overpass` | 21 | OpenStreetMap 名稱比對（**ODbL**，見 [NOTICE.md](NOTICE.md)） |
+| 無座標 | 21 | 門牌本身不是地址（「樂群一路旁基隆河截彎取直範圍內」） |
 
-```powershell
-# 進入 Flutter 專案目錄
+| 精度 | 筆數 | 意義 |
+|---|---|---|
+| `exact` | 285 | 正規化地址完全比對到政府資料集 |
+| `name_match` | 6 | 以設施名稱比對 |
+| `approx` | 89 | 依鄰近門牌推估，可能相差數十公尺 |
+
+API 每筆回應都帶 `座標來源` 與 `座標精度`，App 會在介面上標示 `approx` 與無座標的情況——**不會假裝每個點都一樣精確**。
+
+### 已知的上游資料錯誤
+
+消防署點位檔的 272 筆臺北市資料中，有 2 筆座標離譜（`北市大附小` 標到屏東的 120.913/22.4797）。`TaipeiBounds` 品質閘會攔下來並列進報告。
+
+---
+
+## API
+
+Base URL 預設 `http://localhost:8080/api`。
+
+### `GET /shelters`
+
+| 參數 | 中文別名 | 說明 |
+|---|---|---|
+| `q` | — | 關鍵字（在 server 本地比對名稱／地址／類型等欄位，多個關鍵字為 AND） |
+| `city` | `縣市` | 支援「臺／台」兩種寫法 |
+| `township` | `鄉鎮` | |
+| `village` | `村里` | 同時比對「村里」與「服務里別」 |
+| `villages` | — | 可重複或以分隔字元多值 |
+| `type` | `類型` | |
+| `flood` `quake` `landslide` `tsunami` | `水災` `震災` `土石流` `海嘯` | 值為 `Y`／`N`，或別名 `備用`／`老舊聚落` |
+| `relief` `accessible` `indoor` `outdoor` | `救濟支站` `無障礙設施` `室內` `室外` | |
+| `match` | — | `and`（預設）或 `or`，**僅作用在災害條件上** |
+| `limit` `offset` | — | 套用在**過濾後**的結果 |
+
+```json
+{
+  "success": true,
+  "total": 401,
+  "data": [{
+    "收容所編號": "SA100-0002",
+    "名稱": "臺北市立螢橋國民中學",
+    "門牌地址": "汀州路三段四號",
+    "震災": "Y",
+    "服務里別": ["板溪里", "網溪里"],
+    "座標x": 121.5265,
+    "座標y": 25.019,
+    "座標來源": "nfa_point_file",
+    "座標精度": "exact"
+  }]
+}
+```
+
+### `GET /shelters/nearby?lat=&lng=&radius=&limit=`
+
+依距離排序，距離計算在 server 端完成。額外回傳 `距離公尺`，以及 `excludedWithoutCoordinates`（因為沒有座標而排除的筆數，讓 client 知道清單不完整）。
+
+```bash
+curl 'localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&limit=3'
+```
+
+### `GET /shelters/stats`
+
+同一組過濾參數，回傳 `total`／`byType`／`byRegion`／`items`／`filters`，以及 `coordinateCoverage`：
+
+```json
+{ "total": 401, "withCoordinates": 380, "missing": 21, "ratio": 0.9476,
+  "bySource": { "nfa_point_file": 251, "taipei_airraid": 108, "osm_overpass": 21, "none": 21 } }
+```
+
+---
+
+## 設定
+
+### server
+
+`Env`（[`lib/core/config/env.dart`](server/lib/core/config/env.dart)）解析順序：**CLI 位置參數（僅 port） > 環境變數 > `.env` 檔 > 內建預設**。範本見 [`server/.env.example`](server/.env.example)。
+
+| Key | 預設 | 說明 |
+|---|---|---|
+| `PORT` | `8080` | 也可用位置參數 `dart run bin/server.dart 3000` |
+| `COORDINATES_CSV` | `data/shelter_coordinates.csv` | 座標表路徑 |
+| `CACHE_TTL_SECONDS` | `600` | 上游資料快取時間 |
+| `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
+
+不要直接讀 `Platform.environment`，一律走 `Env` 的 getter，否則優先序會不一致。
+
+### flutter_codefest
+
+**沒有任何金鑰要設定。** 唯一的建置期設定是後端位置：
+
+```bash
+flutter run   -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
+flutter build web       --dart-define=API_BASE_URL=https://api.example.tw/api
+```
+
+- Android 模擬器連本機要用 `10.0.2.2`，不是 `localhost`。
+- Flutter Web 若以 https 提供服務，後端也必須是 https，否則會被瀏覽器的 mixed-content 擋掉。
+
+---
+
+## 開發
+
+```bash
+# 後端
+cd server
+dart analyze        # 0 issues
+dart test           # 85 passed
+
+# 前端
 cd flutter_codefest
-
-# 安裝相依套件
-flutter pub get
-
-# 執行（裝置／模擬器需就緒）
-flutter run
-
-# 指定平台
-flutter run -d chrome           # Web
-flutter run -d android          # Android
-flutter run -d ios              # iOS（需 macOS + Xcode）
-flutter run -d windows          # Windows 桌面
+flutter analyze     # 0 issues
+flutter test        # 22 passed
 ```
 
-> **注意**：啟動前請先完成 Google Maps API Key 設定（見下節），否則地圖將顯示為空白。
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）在每個 PR 跑 analyze、format、test、web build，以及 gitleaks 機密掃描。另有每週排程的 [upstream-data-check](.github/workflows/upstream-data-check.yml) 監看上游資料 schema 與覆蓋率變化。
+
+貢獻前請讀 [CONTRIBUTING.md](CONTRIBUTING.md)，特別是**禁止提交清單**與安裝 pre-commit hook：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### 本機工具鏈現況
+
+- Flutter 3.44 / Dart 3.12（pubspec 要求 sdk `^3.9.2`）
+- 實務上可直接執行的目標是 `-d chrome` 與 macOS desktop
+- iOS 需要 CocoaPods、Android 需要 Android SDK；本專案的 iOS/Android 設定（定位權限描述、entitlements、applicationId）已補齊但**未在本機實際建置驗證**
 
 ---
 
-## Google Maps API Key 設定
+## 上游資料的已知特性
 
-請依平台設定地圖金鑰：
+以下皆為 2026-08-09 對全部 401 筆的實測結果。這些規則的實作集中在 [`shelter_fields.dart`](server/lib/domain/entities/shelter_fields.dart)，**不要在別處重新實作**。
 
-### Android
-在 `flutter_codefest/android/app/src/main/AndroidManifest.xml` 的 `<application>` 內加入：
-```xml
-<meta-data android:name="com.google.android.geo.API_KEY"
-           android:value="YOUR_ANDROID_API_KEY" />
-```
+| 欄位 | 值域 |
+|---|---|
+| 水災 | Y(206) N(195) |
+| 震災 | 備用(239) N(100) Y(62) |
+| 土石流 | N(390) Y(6) 老舊聚落(5) |
+| 海嘯 | N(391) 備用(10) — **完全沒有 Y** |
+| 縣市 | 全部是 `臺北市`（「臺」不是「台」） |
 
-### iOS
-在 `flutter_codefest/ios/Runner/AppDelegate.swift` 中呼叫：
-```swift
-GMSServices.provideAPIKey("YOUR_IOS_API_KEY")
-```
-或於 `Info.plist` 設定對應 Key。
-
-### Web
-在 `flutter_codefest/web/index.html` 中，於 Google Maps JavaScript API 的 `key` 參數帶入金鑰：
-```html
-<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_API_KEY"></script>
-```
+- **災害欄位不是純 Y/N。** `備用` 與 `老舊聚落` 都代表「可用」，API 一律視為並輸出成 `Y`。海嘯沒有任何原生 `Y`，拿掉別名處理會讓 `?tsunami=Y` 永遠回 0 筆。若要單獨取出變體，用 `?quake=備用`。
+- **`服務里別` 分隔符不一致**，除了 `、` 還混有 `。`、換行與括號註記。只切 `[、，,]` 會弄壞 4 筆。API 已正規化為陣列。
+- **數值欄位是字串且不保證是數字。** `收容所面積（平方公尺）` 有千分位 `14,495` 與兩筆中文說明，`容納人數` 有一筆中文說明。
+- **上游 `?q=` 完全無效**——`q=南港`、`q=zzzz` 都回全部 401 筆。真正的關鍵字過濾發生在 server 本地。
+- **`match=or` 只作用在災害條件上**，region／type／keyword 永遠是 AND，且只評估查詢有帶到的災害鍵。
 
 ---
 
-## 權限設定
+## 授權
 
-### Android
-在 `AndroidManifest.xml` 加入：
-```xml
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-<uses-permission android:name="android.permission.INTERNET" />
-```
+程式碼以 **MIT** 授權（見 [LICENSE](LICENSE)）。
 
-### iOS
-在 `Info.plist` 加入用途說明：
-```xml
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>需要使用您的位置以顯示附近避難設施</string>
-```
+**資料檔另有授權**——`server/data/shelter_coordinates.csv` 混合了政府資料開放授權條款第 1 版與 ODbL（OpenStreetMap 部分）。再散布前請務必讀 [NOTICE.md](NOTICE.md)。
 
----
+地圖底圖由**內政部國土測繪中心**提供，依其使用規範，顯示圖磚的畫面必須標示來源。App 已在地圖左下角標示，**請勿移除**。
 
-## 後端 API 文件
+> **本系統為查詢輔助工具，非官方災害應變系統。**
+> 上游資料非即時，且部分座標為推估值。**災時請以臺北市政府即時公告為準。**
 
-伺服器提供以下端點，Base URL 為 `http://localhost:<PORT>/api`。
-
-### GET `/api/shelters`
-
-取得符合條件的避難收容處列表。
-
-**查詢參數：**
-
-| 參數 | 說明 |
-|------|------|
-| `q` | 關鍵字（支援多個字詞，以空白、逗號或頓號分隔） |
-| `city` / `縣市` | 縣市名稱 |
-| `township` / `鄉鎮` | 鄉鎮行政區 |
-| `village` / `村里` | 單一村里 |
-| `villages` | 多個村里，可重複或逗號分隔 |
-| `type` / `類型` | 避難場所類型 |
-| `flood`, `quake`, `landslide`, `tsunami`, `relief`, `accessible`, `indoor`, `outdoor` | 災害與設施條件（值為 `Y` / `N`） |
-| `match` | `and`（預設）或 `or`，決定多條件組合方式 |
-| `limit` | 回傳筆數上限（預設 1000） |
-| `offset` | 分頁起點 |
-
-**成功回應：**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "名稱": "...",
-      "縣市": "台北市",
-      "鄉鎮": "中正區",
-      "村里": "...",
-      "服務里別": ["..."],
-      "類型": "...",
-      "水災": "Y",
-      "室內": "Y",
-      "容納人數": 200,
-      "座標x": 121.5,
-      "座標y": 25.0
-    }
-  ],
-  "total": 123,
-  "filters": { ... }
-}
-```
-
-**失敗回應：**
-```json
-{
-  "success": false,
-  "message": "錯誤描述",
-  "code": "可選的錯誤代碼"
-}
-```
-
-### GET `/api/shelters/stats`
-
-在相同查詢條件下提供統計資訊與行政區彙整。
-
-**查詢參數：** 與 `/api/shelters` 相同。
-
-**成功回應：**
-```json
-{
-  "success": true,
-  "filters": { "q": "南港", "city": "台北市", "match": "and" },
-  "total": 45,
-  "byType": [{ "type": "國中小", "count": 20 }],
-  "byRegion": [
-    {
-      "city": "台北市",
-      "total": 45,
-      "townships": [
-        {
-          "township": "南港區",
-          "total": 30,
-          "villages": [{ "village": "三重里", "count": 5 }],
-          "shelters": [{ "名稱": "...", "門牌地址": "..." }]
-        }
-      ]
-    }
-  ],
-  "items": [
-    { "名稱": "...", "門牌地址": "...", "縣市": "台北市", "鄉鎮": "南港區", "村里": "..." }
-  ]
-}
-```
-
----
-
-## 環境變數
-
-### 後端伺服器
-
-| 變數 | 說明 | 預設值 |
-|------|------|--------|
-| `PORT` | HTTP 伺服器監聽埠 | `8080` |
-| `GEOCODING_DB` | Geocoding SQLite 檔案路徑 | `lib/data/datasources/database/geoapify_results.db` |
-| `LOG_LEVEL` | 日誌等級（debug / info / warn / error） | `info` |
-
-設定範例（PowerShell）：
-```powershell
-$env:PORT = "3000"
-$env:GEOCODING_DB = "D:\data\geoapify_results.db"
-```
-
-### 前端 Flutter App
-前端 App 的 API 連線位址定義於 `flutter_codefest/lib/data/datasources/api.dart`：
-```dart
-static const String baseUrl = 'http://localhost:8080/api';
-```
-請依您的後端部署位置修改此值。
-
----
-
-## 使用說明
-
-- **搜尋與分類**：開啟搜尋後，顯示可左右滑動的分類按鈕，可複選
-- **篩選邏輯**：符合任一選擇的類型即會顯示（OR 行為）
-- **底部面板**：畫面底部常駐約 25% 高度，提供「開始導航」與「詳情」按鈕
-- **提醒橫幅**：
-  - 超出台北市 → 橘色告示
-  - 定位成功 → 綠色（3 秒自動隱藏）/ 失敗 → 紅色
-  - 桌面寬度 > 600px → 藍色提示建議使用手機比例
-- **使用手冊**：右下書本按鈕可進入使用手冊頁面
-
----
-
-## 常見問題（FAQ）
-
-- **地圖不顯示／一片空白**
-  - 請確認已正確設定 Google Maps API Key，且金鑰未受限於不相容的網域或金鑰類型。
-- **要求定位權限被拒**
-  - Android：到系統設定開啟 App 定位權限並重試。
-  - iOS：到設定 > 隱私權 > 定位服務開啟對應權限。
-- **模擬器定位不準**
-  - 請在模擬器工具中手動設定 GPS 座標，或改用實機測試。
-- **後端啟動失敗（SocketException: errno = 10048）**
-  - 埠被占用，請使用 `netstat -ano | findstr :<port>` 找出佔用程序並處理，或改用其他埠啟動。
-
----
-
-## 開發指令
-
-```powershell
-# Flutter：清除建置快取
-cd flutter_codefest; flutter clean
-
-# Flutter：檢查相依更新
-flutter pub outdated
-
-# Flutter：執行測試
-flutter test
-
-# 後端：執行測試
-cd server; dart test
-
-# 後端：分析程式碼
-dart analyze
-```
+安全性問題請見 [SECURITY.md](SECURITY.md)，不要開公開 issue。
 
 ---
 
 ## 資料來源
 
-- **台北市 OpenData**：`https://data.taipei/api/v1/dataset`
-  - 資料集 ID：`4c92dbd4-d259-495a-8390-52628119a4dd`（北市警政 APP_防空避難設備位置）
+- [臺北市可供避難收容處所一覽表](https://data.taipei/dataset/detail?id=aaf97773-3631-40e2-b3cc-da87bf2ce1d5) — 臺北市政府社會局
+- [避難收容處所點位檔](https://data.gov.tw/dataset/73242) — 內政部消防署
+- [北市警政APP_防空避難設備位置](https://data.taipei/dataset/detail?id=83eecdf1-3bbb-40f9-9484-b55b700c37ef) — 臺北市政府警察局
+- [國土測繪圖資服務雲 WMTS](https://maps.nlsc.gov.tw/) — 內政部國土測繪中心
+- [OpenStreetMap](https://www.openstreetmap.org/) — © OpenStreetMap contributors (ODbL)
 
 ---
 
-## 版權與授權
+## 團隊
 
-本專案僅供教學與競賽展示用途，保留所有權利。若需商業或長期維運使用，請務必檢視第三方套件授權與 Google Maps API 使用條款。
-
----
-
-## 參與開發
+臺北程式設計節城市通微服務大黑客松 2025 · 團隊 30 · 喵主餓餓女裝
 
 - **@twcat0503**（台貓）
 - **@nangong5421**（南宮柳信）
 - **@itousouta15**（伊藤蒼太）
 - **@yuzen9622**（Z）
 - **@NiaN0412**（q_nnn412）
-
----
-
-## 臺北程式設計節城市通微服務大黑客松 2025
-
-- 團隊編號：30
-- 隊名：喵主餓餓女裝
