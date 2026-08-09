@@ -163,6 +163,35 @@ void main() {
     expect(stale.single.shelterCode, fresh.single.shelterCode);
   });
 
+  test(
+    'backs off instead of retrying a failing upstream every request',
+    () async {
+      // With a zero TTL and no backoff, an upstream outage turned every single
+      // request into a fresh attempt — latency for the caller and a retry storm
+      // aimed at a dependency that is already unwell.
+      final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+      final repository = repositoryFor(upstream, ttl: Duration.zero);
+
+      await repository.getAllShelters();
+      upstream.fail = true;
+      await repository.getAllShelters(); // fails, enters backoff, serves stale
+      final afterFirstFailure = upstream.requests;
+
+      for (var i = 0; i < 5; i++) {
+        expect(
+          (await repository.getAllShelters()).single.shelterCode,
+          'SA100-0002',
+        );
+      }
+
+      expect(
+        upstream.requests,
+        afterFirstFailure,
+        reason: 'requests during the backoff window must not reach upstream',
+      );
+    },
+  );
+
   test('a first-load failure propagates rather than serving nothing', () async {
     final upstream = _Upstream([])..fail = true;
     expect(() => repositoryFor(upstream).getAllShelters(), throwsA(anything));

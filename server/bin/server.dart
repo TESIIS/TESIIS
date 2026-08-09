@@ -8,6 +8,7 @@ import 'package:shelf_router/shelf_router.dart';
 
 import 'package:server/core/config/env.dart';
 import 'package:server/core/di/injection.dart' as di;
+import 'package:server/data/datasources/local/coordinate_source.dart';
 import 'package:server/presentation/controllers/shelter_controller.dart';
 
 /// Maps the LOG_LEVEL config value onto a `package:logging` level.
@@ -45,7 +46,19 @@ Future<void> main(List<String> args) async {
   final logger = Logger('Server');
   logger.info('Starting server...');
 
-  di.setupDependencies();
+  // Check the one precondition that cannot be recovered from before wiring
+  // anything up, so a missing coordinate table produces an explanation rather
+  // than a DI stack trace.
+  final CoordinateSource coordinates;
+  try {
+    coordinates = di.loadCoordinateSource();
+  } on di.CoordinateTableUnavailable catch (e) {
+    stderr.writeln('\n$e\n');
+    await logSink.close();
+    exit(1);
+  }
+
+  di.setupDependencies(coordinates: coordinates);
   final shelterController = di.getIt<ShelterController>();
 
   final router = Router()..mount('/api/', shelterController.router.call);

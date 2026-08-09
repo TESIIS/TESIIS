@@ -101,9 +101,28 @@ class ShelterRepositoryImpl implements ShelterRepository {
         DateTime.now().difference(at) < _cacheTtl;
   }
 
+  /// How long to keep serving stale data before trying a failing upstream
+  /// again.
+  ///
+  /// Without this, an upstream outage turns every single request into a fresh
+  /// attempt: latency for the caller, and a retry storm aimed at a dependency
+  /// that is already unwell.
+  static const staleRetryBackoff = Duration(seconds: 30);
+
+  DateTime? _retryNotBefore;
+
+  bool get _inBackoff {
+    final until = _retryNotBefore;
+    return until != null && DateTime.now().isBefore(until);
+  }
+
   @override
   Future<List<Shelter>> getAllShelters() async {
     if (_isFresh) return _cached!;
+
+    // Upstream is known to be failing and we still have something to serve.
+    final stale = _cached;
+    if (stale != null && _inBackoff) return stale;
 
     final pending = _inFlight;
     if (pending != null) return pending;
@@ -125,12 +144,16 @@ class ShelterRepositoryImpl implements ShelterRepository {
           .toList(growable: false);
       _cached = shelters;
       _cachedAt = DateTime.now();
+      _retryNotBefore = null;
       return shelters;
     } catch (_) {
       // Serve stale data rather than nothing: during a disaster a slightly old
       // shelter list is far more useful than an error page.
       final stale = _cached;
-      if (stale != null) return stale;
+      if (stale != null) {
+        _retryNotBefore = DateTime.now().add(staleRetryBackoff);
+        return stale;
+      }
       rethrow;
     }
   }

@@ -51,6 +51,16 @@ class Env {
     _fileValues = _parse(file.readAsLinesSync());
   }
 
+  /// Loads config from [lines] instead of a file.
+  ///
+  /// Exists so the parser and the getters can be tested without writing a
+  /// `.env` to disk — which the test would then have to clean up, and which
+  /// would be one careless `git add` away from being committed.
+  static void loadFromLines(List<String> lines) {
+    _loaded = true;
+    _fileValues = _parse(lines);
+  }
+
   static Map<String, String> _parse(List<String> lines) {
     final out = <String, String>{};
     for (final raw in lines) {
@@ -89,11 +99,16 @@ class Env {
   static String get coordinatesCsvPath =>
       _read('COORDINATES_CSV') ?? defaultCoordinatesCsvPath;
 
-  static Duration get cacheTtl => Duration(
-    seconds:
+  /// Cache lifetime. `0` is a legitimate value meaning "never serve from
+  /// cache"; negative values are clamped to it rather than silently producing
+  /// a negative Duration, which would disable caching in a way no one reading
+  /// the config would expect.
+  static Duration get cacheTtl {
+    final seconds =
         int.tryParse(_read('CACHE_TTL_SECONDS') ?? '') ??
-        defaultCacheTtlSeconds,
-  );
+        defaultCacheTtlSeconds;
+    return Duration(seconds: seconds < 0 ? 0 : seconds);
+  }
 
   static String get logLevel =>
       (_read('LOG_LEVEL') ?? defaultLogLevel).toLowerCase();
