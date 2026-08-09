@@ -2,3 +2,17 @@
 # Created by `dart pub`
 .dart_tool/
 logs/
+
+# ====== 機敏資料 ======
+# 與 repo 根目錄的 .gitignore 重複是刻意的：如果 server/ 之後被拆成獨立 repo，
+# 保護不能跟著根目錄一起消失。完整說明見 CONTRIBUTING.md 的「禁止提交清單」。
+.env
+.env.local
+.env*.local
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+service-account*.json
+tool/.cache/

@@ -2,7 +2,22 @@
 .env
 .env.local
 .env*.local
-.env.example
+# Templates carry no secrets and must stay in version control.
+!.env.example
+
+# 金鑰、憑證、簽章檔（見 CONTRIBUTING.md 的「禁止提交清單」）
+*.keystore
+*.jks
+*.p12
+*.pem
+*.mobileprovision
+**/google-services.json
+**/GoogleService-Info.plist
+**/local.properties
+service-account*.json
+
+# Flutter Web 執行期設定（可能含金鑰）
+flutter_codefest/web/env.js
 
 # ====== 開發工具與 IDE ======
 .vscode/
@@ -22,10 +37,13 @@ venv/
 Thumbs.db
 
 # ====== 日誌 ======
+# 可能含使用者查詢內容與 IP，一律不進版控
 *.log
 logs/
 
 # ====== 資料檔案 ======
+# 座標快取／中繼檔。注意：server/data/shelter_coordinates.csv 是刻意進版控的
+# 產出物（見 server/tool/build_coordinates.dart），不在此排除。
 *.db
 *.sqlite
 *.sqlite3
@@ -33,6 +51,8 @@ data-with-latlng.json
 geocode-cache.json
 
 # ====== Flutter / Dart ======
+# 同一份規則也寫在 flutter_codefest/.gitignore，
+# 讓保護在 repo 被拆分成獨立專案時仍然成立。
 flutter_codefest/.dart_tool/
 flutter_codefest/.pub/
 flutter_codefest/.pub-cache/

@@ -1,13 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_codefest/core/map/basemap.dart';
 import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/data/repositories/shelters_repository.dart';
 import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MapScreen extends StatefulWidget {
@@ -18,9 +21,25 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
+
+  /// MapController throws if it is driven before the map has laid out.
+  bool _isMapReady = false;
 
   static const LatLng _taipeiCenter = LatLng(25.0375, 121.5651);
+
+  /// Radius of the "what is around here" circle, in metres.
+  static const double _visibleRadiusMeters = 1500;
+
+  /// How long the map must sit still before recomputing what is in range.
+  static const Duration _idleDebounce = Duration(milliseconds: 300);
+
+  /// Rough 臺北市 extent, used only to warn that the user has panned away.
+  static const double _taipeiMinLat = 24.95;
+  static const double _taipeiMaxLat = 25.21;
+  static const double _taipeiMinLng = 121.45;
+  static const double _taipeiMaxLng = 121.65;
+
   final TextEditingController _searchController = TextEditingController();
 
   bool _isSearching = false;
@@ -31,352 +50,302 @@ class _MapScreenState extends State<MapScreen> {
   List<Shelter> _nearbyShelters = [];
   List<Shelter> _visibleShelters = []; // 地圖可視範圍內的避難所
   Position? _currentPosition;
-  final Set<Circle> _circles = {}; // 地圖上的圓圈(1.5km範圍遮罩)
-  BitmapDescriptor? _currentLocationIcon; // 快取位置圖標
-  Shelter? _selectedShelter; // 當前選中的避難所
-  bool _showShelterDetails = false; // 是否顯示避難所詳細資訊
-  final String assetName = 'assets/icons/now_location.svg';
-  late final Widget svg = SvgPicture.asset(assetName, width: 48, height: 48);
+  Shelter? _selectedShelter;
+  bool _showShelterDetails = false;
+
+  Basemap _basemap = Basemap.emap;
+
+  List<Marker> _markers = const [];
+  List<CircleMarker> _circles = const [];
 
   // 分類篩選狀態
   final Set<String> _selectedDisasterTypes =
       {}; // 災害類型: landslide, tsunami, earthquake, flood
   final Set<String> _selectedSpaceTypes = {}; // 空間類型: indoor, outdoor
 
-  // 防抖控制 - 避免過於頻繁的更新
-  bool _isUpdating = false;
-  DateTime? _lastUpdateTime;
-  bool _showOutOfRangeWarning = false; // 是否顯示超出範圍警告
-  String? _locationMessage; // 定位訊息
-  bool _isLocationSuccess = true; // 定位是否成功(決定顏色)
+  Timer? _idleTimer;
+  bool _showOutOfRangeWarning = false;
+  String? _locationMessage;
+  bool _isLocationSuccess = true;
+
+  // Shelters the coordinate table could not locate are deliberately kept in
+  // the data rather than dropped: they exist, people can walk to them, and the
+  // UI offers to open the address in an external map instead of silently
+  // pretending they are not there. See _buildResultSummary and
+  // _buildCoordinateNotice.
 
   @override
   void initState() {
     super.initState();
-    // 應用程式啟動時自動獲取位置
     _getAllShelters();
     _getCurrentLocation();
-    _loadLocationIcon(); // 預先載入位置圖標
   }
 
-  // 預先載入位置圖標
-  Future<void> _loadLocationIcon() async {
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    _searchController.dispose();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _getAllShelters() async {
     try {
-      _currentLocationIcon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/icons/now_location.png',
-      );
+      final shelters = await fetchAllShelters();
+      if (!mounted) return;
+      setState(() => _shelters = shelters);
+      _updateVisibleShelters(_currentLatLng ?? _taipeiCenter);
     } catch (e) {
-      debugPrint('載入位置圖標失敗: $e');
-    }
-  }
-
-  _getAllShelters() async {
-    _shelters = await fetchAllShelters();
-    setState(() {});
-  }
-
-  // 更新地圖中心點附近 1.5km 範圍內的避難所
-  void _updateVisibleShelters(LatLng center) async {
-    // 防抖控制 - 如果距離上次更新不到 500ms,則跳過
-    final now = DateTime.now();
-    if (_lastUpdateTime != null &&
-        now.difference(_lastUpdateTime!).inMilliseconds < 300) {
-      return;
-    }
-
-    if (_isUpdating || _shelters.isEmpty) return;
-    _isUpdating = true;
-    _lastUpdateTime = now;
-
-    const double radiusInMeters = 1500; // 1.5 公里
-
-    List<Shelter> sheltersInRange = [];
-
-    for (var shelter in _shelters) {
-      if (shelter.latitude == null || shelter.longitude == null) continue;
-
-      try {
-        final double lat = shelter.latitude is double
-            ? shelter.latitude
-            : double.parse(shelter.latitude.toString());
-        final double lon = shelter.longitude is double
-            ? shelter.longitude
-            : double.parse(shelter.longitude.toString());
-
-        if (lat == 0.0 || lon == 0.0) continue;
-
-        // 計算與地圖中心的距離
-        double distance = Geolocator.distanceBetween(
-          center.latitude,
-          center.longitude,
-          lat,
-          lon,
-        );
-
-        // 如果在 1.5km 範圍內,加入列表
-        if (distance <= radiusInMeters) {
-          sheltersInRange.add(shelter);
-        }
-      } catch (e) {
-        continue;
+      debugPrint('載入避難所失敗: $e');
+      if (mounted) {
+        setState(() {
+          _locationMessage = '無法連線到伺服器,請確認後端已啟動';
+          _isLocationSuccess = false;
+        });
       }
     }
-
-    // 更新1.5km範圍的圓圈遮罩
-    _circles.clear();
-    _circles.add(
-      Circle(
-        circleId: const CircleId('search_radius'),
-        center: center,
-        radius: radiusInMeters,
-        fillColor: const Color(0xFF5AB4C5).withOpacity(0.15), // 半透明藍色
-        strokeColor: const Color(0xFF5AB4C5).withOpacity(0.5),
-        strokeWidth: 2,
-      ),
-    );
-
-    if (mounted) {
-      setState(() {
-        _visibleShelters = sheltersInRange;
-        // 更新地圖標記
-        _updateMapMarkers();
-      });
-    }
-
-    _isUpdating = false;
-
-    debugPrint('地圖中心: ${center.latitude}, ${center.longitude}');
-    debugPrint('範圍內避難所數量: ${sheltersInRange.length}');
   }
 
-  // 更新地圖上的標記
+  LatLng? get _currentLatLng => _currentPosition == null
+      ? null
+      : LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
+
+  // ---------------------------------------------------------------------
+  // Map state
+  // ---------------------------------------------------------------------
+
+  /// Recomputes which shelters fall inside [_visibleRadiusMeters] of [center].
+  void _updateVisibleShelters(LatLng center) {
+    if (_shelters.isEmpty) return;
+
+    final inRange = <Shelter>[
+      for (final shelter in locatableShelters(_shelters))
+        if (calculateDistance(
+              center.latitude,
+              center.longitude,
+              shelter.latitude!,
+              shelter.longitude!,
+            ) <=
+            _visibleRadiusMeters)
+          shelter,
+    ];
+
+    if (!mounted) return;
+    setState(() {
+      _visibleShelters = inRange;
+      _circles = [
+        CircleMarker(
+          point: center,
+          radius: _visibleRadiusMeters,
+          useRadiusInMeter: true,
+          color: const Color(0xFF5AB4C5).withValues(alpha: 0.15),
+          borderColor: const Color(0xFF5AB4C5).withValues(alpha: 0.5),
+          borderStrokeWidth: 2,
+        ),
+      ];
+      _updateMapMarkers();
+    });
+  }
+
+  /// Rebuilds [_markers]. Call inside a setState.
   void _updateMapMarkers() {
-    // 清除所有標記
-    _markers.clear();
+    final shelters = _isSearching && _filteredShelters.isNotEmpty
+        ? _filteredShelters
+        : _visibleShelters;
 
-    // 如果有目前位置,添加目前位置標記
-    if (_currentPosition != null) {
-      _addCurrentLocationMarker();
-    }
-
-    // 如果在搜尋模式,顯示搜尋結果
-    if (_isSearching && _filteredShelters.isNotEmpty) {
-      for (final shelter in _filteredShelters) {
-        _addShelterMarker(shelter);
-      }
-    } else {
-      // 否則顯示可視範圍內的避難所
-      for (final shelter in _visibleShelters) {
-        _addShelterMarker(shelter);
-      }
-    }
+    _markers = [
+      for (final shelter in shelters)
+        if (shelter.hasCoordinate) _shelterMarker(shelter),
+      if (_currentLatLng != null) _currentLocationMarker(_currentLatLng!),
+    ];
   }
 
-  // 添加避難所標記
-  void _addShelterMarker(Shelter shelter) {
-    if (shelter.latitude == null || shelter.longitude == null) return;
+  /// Marker colour encodes coordinate confidence, not category.
+  ///
+  /// About 20% of the located shelters sit at an interpolated street position
+  /// rather than a surveyed point (see 座標精度 in the API). Showing that
+  /// difference is more useful than colour-coding the facility type, which the
+  /// detail panel already states in words.
+  String _markerAsset(Shelter shelter, {required bool isSelected}) {
+    if (isSelected) return 'assets/icons/red-refuge.svg';
+    return shelter.isCoordinateExact
+        ? 'assets/icons/green-refuge.svg'
+        : 'assets/icons/yellow-refuge.svg';
+  }
 
-    try {
-      final double lat = shelter.latitude is double
-          ? shelter.latitude
-          : double.parse(shelter.latitude.toString());
-      final double lon = shelter.longitude is double
-          ? shelter.longitude
-          : double.parse(shelter.longitude.toString());
+  Marker _shelterMarker(Shelter shelter) {
+    final isSelected = _selectedShelter?.shelterId == shelter.shelterId;
+    final size = isSelected ? 46.0 : 34.0;
 
-      if (lat == 0.0 || lon == 0.0) return;
-
-      // 檢查是否為選中的避難所
-      final isSelected = _selectedShelter?.shelterId == shelter.shelterId;
-
-      _markers.add(
-        Marker(
-          markerId: MarkerId(shelter.shelterId),
-          position: LatLng(lat, lon),
-          onTap: () => _onMarkerTapped(shelter), // 點擊標記時顯示詳細資訊
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            isSelected
-                ? BitmapDescriptor
-                      .hueOrange // 被選中時使用橘色
-                : BitmapDescriptor.hueAzure, // 預設使用藍色標記
+    return Marker(
+      key: ValueKey('shelter-${shelter.shelterId}-$isSelected'),
+      point: LatLng(shelter.latitude!, shelter.longitude!),
+      width: size,
+      height: size,
+      // Bottom-centre: the pin tip is the location, not the middle of the icon.
+      alignment: Alignment.topCenter,
+      child: Semantics(
+        button: true,
+        label:
+            '${shelter.name}，${shelter.address}'
+            '${shelter.isCoordinateExact ? '' : '，位置為概略值'}',
+        child: GestureDetector(
+          onTap: () => _onMarkerTapped(shelter),
+          child: SvgPicture.asset(
+            _markerAsset(shelter, isSelected: isSelected),
+            width: size,
+            height: size,
           ),
         ),
-      );
-    } catch (e) {
-      debugPrint('添加標記失敗: $e');
-    }
+      ),
+    );
   }
 
-  // 處理標記點擊事件
+  Marker _currentLocationMarker(LatLng point) => Marker(
+    key: const ValueKey('current-location'),
+    point: point,
+    width: 48,
+    height: 48,
+    child: Semantics(
+      label: '我的位置',
+      child: SvgPicture.asset(
+        'assets/icons/now_location.svg',
+        width: 48,
+        height: 48,
+      ),
+    ),
+  );
+
   void _onMarkerTapped(Shelter shelter) {
     setState(() {
       _selectedShelter = shelter;
       _showShelterDetails = true;
-      // 重新繪製所有 markers 以更新顏色
       _updateMapMarkers();
     });
 
-    // 將地圖中心移動到選中的避難所
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(
-            shelter.latitude is double
-                ? shelter.latitude
-                : double.parse(shelter.latitude.toString()),
-            shelter.longitude is double
-                ? shelter.longitude
-                : double.parse(shelter.longitude.toString()),
-          ),
-        ),
+    if (_isMapReady && shelter.hasCoordinate) {
+      _mapController.move(
+        LatLng(shelter.latitude!, shelter.longitude!),
+        _mapController.camera.zoom,
       );
     }
   }
 
-  // 打開 Google Maps 導航
+  void _onMapReady() {
+    _isMapReady = true;
+    _updateVisibleShelters(_currentLatLng ?? _taipeiCenter);
+  }
+
+  /// Fires continuously while the map moves, so the real work is debounced
+  /// until it stops.
+  void _onPositionChanged(MapCamera camera, bool hasGesture) {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleDebounce, () {
+      if (!mounted || _isSearching) return;
+      _checkTaipeiRange(camera.center);
+      _updateVisibleShelters(camera.center);
+    });
+  }
+
+  void _checkTaipeiRange(LatLng center) {
+    final isOutOfRange =
+        center.latitude < _taipeiMinLat ||
+        center.latitude > _taipeiMaxLat ||
+        center.longitude < _taipeiMinLng ||
+        center.longitude > _taipeiMaxLng;
+
+    if (_showOutOfRangeWarning != isOutOfRange && mounted) {
+      setState(() => _showOutOfRangeWarning = isOutOfRange);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Navigation hand-off
+  // ---------------------------------------------------------------------
+
+  /// Hands the selected shelter to whatever map app the device has.
+  ///
+  /// This is a plain https URL, so it needs no API key even though the app no
+  /// longer embeds Google Maps.
   Future<void> _openGoogleMapsNavigation() async {
-    if (_selectedShelter == null) return;
+    final shelter = _selectedShelter;
+    if (shelter == null) return;
+
+    final String url;
+    if (shelter.hasCoordinate) {
+      final destination = '${shelter.latitude},${shelter.longitude}';
+      url = _currentPosition != null
+          ? 'https://www.google.com/maps/dir/?api=1'
+                '&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}'
+                '&destination=$destination&travelmode=driving'
+          : 'https://www.google.com/maps/search/?api=1&query=$destination';
+    } else {
+      // No coordinate: fall back to a text search on the address, which is the
+      // whole reason these shelters stay in the list.
+      final query = Uri.encodeComponent(
+        '臺北市${shelter.district}${shelter.address}',
+      );
+      url = 'https://www.google.com/maps/search/?api=1&query=$query';
+    }
 
     try {
-      final lat = _selectedShelter!.latitude is double
-          ? _selectedShelter!.latitude
-          : double.parse(_selectedShelter!.latitude.toString());
-      final lon = _selectedShelter!.longitude is double
-          ? _selectedShelter!.longitude
-          : double.parse(_selectedShelter!.longitude.toString());
-
-      // 構建 Google Maps 導航 URL
-      // 如果有目前位置,使用 dir (directions) 模式,否則只顯示目的地
-      String url;
-      if (_currentPosition != null) {
-        // 從目前位置導航到目的地
-        url =
-            'https://www.google.com/maps/dir/?api=1&origin=${_currentPosition!.latitude},${_currentPosition!.longitude}&destination=$lat,$lon&travelmode=driving';
-      } else {
-        // 只顯示目的地
-        url = 'https://www.google.com/maps/search/?api=1&query=$lat,$lon';
-      }
-
-      final Uri uri = Uri.parse(url);
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(
-          uri,
-          mode: AppPlatform.isWeb
-              ? LaunchMode.platformDefault
-              : LaunchMode.externalApplication,
-        );
-      } else {
-        _showSnackBar('無法開啟 Google Maps');
-      }
+      final uri = Uri.parse(url);
+      final launched = await launchUrl(
+        uri,
+        mode: AppPlatform.isWeb
+            ? LaunchMode.platformDefault
+            : LaunchMode.externalApplication,
+      );
+      if (!launched) _showSnackBar('無法開啟地圖應用程式');
     } catch (e) {
       debugPrint('開啟導航失敗: $e');
       _showSnackBar('開啟導航失敗');
     }
   }
 
-  // 添加目前位置標記
-  void _addCurrentLocationMarker() {
-    if (_currentPosition == null) return;
-
-    try {
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('current_location'),
-          position: LatLng(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-          ),
-          infoWindow: const InfoWindow(title: '我的位置', snippet: '您目前的位置'),
-          icon: _currentLocationIcon ?? BitmapDescriptor.defaultMarker,
-          anchor: const Offset(0.5, 0.5),
-        ),
-      );
-    } catch (e) {
-      debugPrint('添加目前位置標記失敗: $e');
-    }
-  }
-
-  final Set<Marker> _markers = {};
+  // ---------------------------------------------------------------------
+  // Search and filtering
+  // ---------------------------------------------------------------------
 
   void _toggleSearch() {
     setState(() {
       _isSearching = !_isSearching;
       if (!_isSearching) {
         _searchController.clear();
-        _filteredShelters = []; // 清空搜尋結果
-        _updateMapMarkers(); // 重新顯示範圍內的避難所
-      } else {
-        // 當搜尋欄被點開時,關閉資訊欄
-        if (_showShelterDetails) {
-          _showShelterDetails = false;
-          _selectedShelter = null;
-          _updateMapMarkers();
-        }
+        _filteredShelters = [];
+      } else if (_showShelterDetails) {
+        _showShelterDetails = false;
+        _selectedShelter = null;
       }
+      _updateMapMarkers();
     });
   }
 
-  // 切換分類篩選
   void _toggleFilter(String filterType) {
     setState(() {
       if (_selectedDisasterTypes.contains(filterType) ||
           _selectedSpaceTypes.contains(filterType)) {
         _selectedDisasterTypes.remove(filterType);
         _selectedSpaceTypes.remove(filterType);
-      } else {
-        if ([
-          'landslide',
-          'tsunami',
-          'earthquake',
-          'flood',
-        ].contains(filterType)) {
-          _selectedDisasterTypes.add(filterType);
-        } else if (['indoor', 'outdoor'].contains(filterType)) {
-          _selectedSpaceTypes.add(filterType);
-        }
+      } else if (const [
+        'landslide',
+        'tsunami',
+        'earthquake',
+        'flood',
+      ].contains(filterType)) {
+        _selectedDisasterTypes.add(filterType);
+      } else if (const ['indoor', 'outdoor'].contains(filterType)) {
+        _selectedSpaceTypes.add(filterType);
       }
-      _applyFilters();
     });
+    _applyFilters();
   }
 
-  // 應用篩選條件
-  void _applyFilters() async {
-    // 確定資料來源
-    List<Shelter> sourceList;
-
-    if (_searchController.text.isEmpty) {
-      // 沒有搜尋文字,從所有避難所開始篩選
-      sourceList = _shelters;
-    } else {
-      // 有搜尋文字,從搜尋結果開始
-      sourceList = _searchResults;
-    }
-
-    // 如果沒有篩選條件
-    if (_selectedDisasterTypes.isEmpty && _selectedSpaceTypes.isEmpty) {
-      // 如果沒有搜尋文字且沒有篩選條件,顯示附近的避難所
-      if (_searchController.text.isEmpty) {
-        setState(() {
-          _filteredShelters = [];
-        });
-      } else {
-        setState(() {
-          _filteredShelters = sourceList;
-        });
-      }
-      return;
-    }
-
-    // 應用篩選條件
-    List<Shelter> filtered = sourceList.where((shelter) {
-      bool matchDisaster = _selectedDisasterTypes.isEmpty;
-      bool matchSpace = _selectedSpaceTypes.isEmpty;
-
-      // 檢查災害類型 - 只要符合任一選中的災害類型即可
-      if (_selectedDisasterTypes.isNotEmpty) {
-        matchDisaster = _selectedDisasterTypes.any((type) {
+  bool _matchesSelectedFilters(Shelter shelter) {
+    // Within a category the selections are ORed; the two categories are ANDed.
+    final matchesDisaster =
+        _selectedDisasterTypes.isEmpty ||
+        _selectedDisasterTypes.any((type) {
           switch (type) {
             case 'landslide':
               return shelter.landslide == 'Y';
@@ -390,11 +359,10 @@ class _MapScreenState extends State<MapScreen> {
               return false;
           }
         });
-      }
 
-      // 檢查空間類型 - 只要符合任一選中的空間類型即可
-      if (_selectedSpaceTypes.isNotEmpty) {
-        matchSpace = _selectedSpaceTypes.any((type) {
+    final matchesSpace =
+        _selectedSpaceTypes.isEmpty ||
+        _selectedSpaceTypes.any((type) {
           switch (type) {
             case 'indoor':
               return shelter.indoor == 'Y';
@@ -404,247 +372,161 @@ class _MapScreenState extends State<MapScreen> {
               return false;
           }
         });
-      }
 
-      return matchDisaster && matchSpace;
-    }).toList();
+    return matchesDisaster && matchesSpace;
+  }
 
-    // 如果有當前位置,按距離排序
-    if (_currentPosition != null) {
-      filtered = await getNearestShelters(filtered, _currentPosition!);
+  void _applyFilters() {
+    final hasQuery = _searchController.text.isNotEmpty;
+    final hasFilters =
+        _selectedDisasterTypes.isNotEmpty || _selectedSpaceTypes.isNotEmpty;
+
+    final source = hasQuery ? _searchResults : _shelters;
+
+    List<Shelter> result;
+    if (!hasFilters) {
+      // With neither a query nor a filter there is nothing to list; the map
+      // already shows what is nearby.
+      result = hasQuery ? source : const [];
+    } else {
+      result = source.where(_matchesSelectedFilters).toList();
     }
 
+    // Sort by distance — without truncating.
+    //
+    // This used to call a helper whose `limit` defaulted to 5, so every
+    // filtered and searched result was silently capped at five entries no
+    // matter how many matched.
+    final position = _currentPosition;
+    if (position != null && result.isNotEmpty) {
+      final located = sortedByDistance(
+        result,
+        position.latitude,
+        position.longitude,
+      );
+      final unlocated = result.where((s) => !s.hasCoordinate);
+      result = [...located, ...unlocated];
+    }
+
+    if (!mounted) return;
     setState(() {
-      _filteredShelters = filtered;
+      _filteredShelters = result;
+      _updateMapMarkers();
     });
   }
 
-  void _onSearch(String query) async {
-    // 搜尋框清空
+  Future<void> _onSearch(String query) async {
     if (query.isEmpty) {
       _searchResults = [];
-      // 重新應用篩選(會根據篩選條件決定顯示什麼)
       _applyFilters();
-      setState(() {
-        _updateMapMarkers();
-      });
       return;
     }
-
-    // 執行搜尋
-    List<Shelter> searchResults = await fetchFilteredShelters(q: query);
-
-    if (_currentPosition != null) {
-      searchResults = await getNearestShelters(
-        searchResults,
-        _currentPosition!,
-      );
-    }
-
-    // 儲存搜尋結果
-    _searchResults = searchResults;
-
-    // 應用分類篩選
-    _applyFilters();
-
-    setState(() {
-      _updateMapMarkers(); // 更新為搜尋結果的標記
-    });
-
-    debugPrint('搜尋: $query');
-    debugPrint('找到 ${_filteredShelters.length} 個避難所');
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onMapCreated(GoogleMapController controller) {
-    _mapController = controller;
-    // 初始化時,如果有預設中心點,更新可視範圍
-    if (_currentPosition != null) {
-      _updateVisibleShelters(
-        LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-      );
-    } else {
-      _updateVisibleShelters(_taipeiCenter);
-    }
-  }
-
-  // 當地圖停止移動時觸發
-  void _onCameraIdle() async {
-    if (_mapController == null || _isSearching) return;
 
     try {
-      // 取得當前地圖中心點
-      LatLngBounds visibleRegion = await _mapController!.getVisibleRegion();
-      LatLng center = LatLng(
-        (visibleRegion.northeast.latitude + visibleRegion.southwest.latitude) /
-            2,
-        (visibleRegion.northeast.longitude +
-                visibleRegion.southwest.longitude) /
-            2,
-      );
-
-      // 檢查是否超出台北市範圍
-      _checkTaipeiRange(center);
-
-      // 只在非搜尋模式下更新範圍內的避難所
-      _updateVisibleShelters(center);
+      _searchResults = await fetchFilteredShelters(q: query);
     } catch (e) {
-      debugPrint('更新可視範圍失敗: $e');
-    }
-  }
-
-  // 檢查是否在台北市範圍內
-  void _checkTaipeiRange(LatLng center) {
-    // 台北市大致邊界
-    const double minLat = 24.95; // 最南
-    const double maxLat = 25.21; // 最北
-    const double minLng = 121.45; // 最西
-    const double maxLng = 121.65; // 最東
-
-    bool isOutOfRange =
-        center.latitude < minLat ||
-        center.latitude > maxLat ||
-        center.longitude < minLng ||
-        center.longitude > maxLng;
-
-    // 更新警告狀態
-    if (_showOutOfRangeWarning != isOutOfRange) {
-      setState(() {
-        _showOutOfRangeWarning = isOutOfRange;
-      });
-    }
-  }
-
-  // 檢查定位權限
-  Future<void> _checkLocationPermission() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    // 檢查定位服務是否開啟
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      _showSnackBar('請開啟定位服務');
+      debugPrint('搜尋失敗: $e');
+      _showSnackBar('搜尋失敗,請確認網路連線');
       return;
     }
+    _applyFilters();
+  }
 
-    // 檢查權限
-    permission = await Geolocator.checkPermission();
+  // ---------------------------------------------------------------------
+  // Location
+  // ---------------------------------------------------------------------
+
+  /// Ensures location services are on and permission is granted.
+  /// Returns null on success, or a message to show the user.
+  Future<String?> _ensureLocationPermission() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return '請開啟定位服務';
+    }
+
+    var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        _showSnackBar('定位權限被拒絕');
-        return;
-      }
     }
-
+    if (permission == LocationPermission.denied) {
+      return '定位權限被拒絕';
+    }
     if (permission == LocationPermission.deniedForever) {
-      _showSnackBar('定位權限被永久拒絕,請至設定中開啟');
-      return;
+      return '定位權限被永久拒絕,請至設定中開啟';
     }
+    return null;
   }
 
-  // 取得目前位置
   Future<void> _getCurrentLocation() async {
     setState(() {
       _isLoadingLocation = true;
-      _locationMessage = null; // 清除舊訊息
+      _locationMessage = null;
     });
 
     try {
-      // 檢查權限
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        await _checkLocationPermission();
-        permission = await Geolocator.checkPermission();
-
-        if (permission == LocationPermission.denied ||
-            permission == LocationPermission.deniedForever) {
+      final problem = await _ensureLocationPermission();
+      if (problem != null) {
+        if (mounted) {
           setState(() {
-            _locationMessage = '無法取得定位權限';
+            _locationMessage = problem;
             _isLocationSuccess = false;
           });
-          return;
         }
-      }
-
-      // 取得目前位置
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      _currentPosition = position;
-
-      if (position.latitude == 0.0 ||
-          position.longitude == 0.0 ||
-          position.latitude as dynamic == null ||
-          position.longitude as dynamic == null) {
-        setState(() {
-          _locationMessage = '取得位置失敗: 無效的座標';
-          _isLocationSuccess = false;
-        });
         return;
       }
 
-      setState(() {
-        _updateMapMarkers(); // 更新標記
-      });
-
-      // 移動地圖到目前位置
-      if (_mapController != null) {
-        await _mapController!.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: LatLng(position.latitude, position.longitude),
-              zoom: 15.0,
-            ),
-          ),
-        );
-
-        // 更新以目前位置為中心的 1.5km 範圍避難所
-        _updateVisibleShelters(LatLng(position.latitude, position.longitude));
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (position.latitude == 0.0 && position.longitude == 0.0) {
+        if (mounted) {
+          setState(() {
+            _locationMessage = '取得位置失敗: 無效的座標';
+            _isLocationSuccess = false;
+          });
+        }
+        return;
       }
+      if (!mounted) return;
 
-      // 取得所有附近的避難所(不限制數量,由近到遠排序)
-      _nearbyShelters = await getNearestShelters(_shelters, position);
+      _currentPosition = position;
+      final here = LatLng(position.latitude, position.longitude);
+
+      if (_isMapReady) _mapController.move(here, 15.0);
+      _updateVisibleShelters(here);
+
+      _nearbyShelters = nearestShelters(
+        _shelters,
+        position.latitude,
+        position.longitude,
+      );
 
       setState(() {
         _locationMessage =
-            '已定位: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+            '已定位: ${position.latitude.toStringAsFixed(4)}, '
+            '${position.longitude.toStringAsFixed(4)}';
         _isLocationSuccess = true;
       });
 
-      debugPrint('目前位置: ${position.latitude}, ${position.longitude}');
-
-      // 3秒後自動隱藏成功訊息
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted && _isLocationSuccess && _locationMessage != null) {
-          setState(() {
-            _locationMessage = null;
-          });
+          setState(() => _locationMessage = null);
         }
       });
     } catch (e) {
       debugPrint('取得位置失敗: $e');
-      setState(() {
-        _locationMessage = '無法取得位置: $e';
-        _isLocationSuccess = false;
-      });
+      if (mounted) {
+        setState(() {
+          _locationMessage = '無法取得位置: $e';
+          _isLocationSuccess = false;
+        });
+      }
     } finally {
-      setState(() {
-        _isLoadingLocation = false;
-      });
+      if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
 
-  // 顯示提示訊息
   void _showSnackBar(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -654,6 +536,79 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // Map widget
+  // ---------------------------------------------------------------------
+
+  Widget _buildMap() => FlutterMap(
+    mapController: _mapController,
+    options: MapOptions(
+      initialCenter: _taipeiCenter,
+      initialZoom: 12.0,
+      minZoom: 8,
+      maxZoom: 19,
+      onMapReady: _onMapReady,
+      onPositionChanged: _onPositionChanged,
+      onTap: (_, __) {
+        if (!_isSearching && !_showShelterDetails) return;
+        setState(() {
+          if (_isSearching) {
+            _isSearching = false;
+            _searchController.clear();
+          }
+          if (_showShelterDetails) {
+            _showShelterDetails = false;
+            _selectedShelter = null;
+          }
+          _updateMapMarkers();
+        });
+        FocusScope.of(context).unfocus();
+      },
+    ),
+    children: [
+      basemapTileLayer(_basemap),
+      CircleLayer(circles: _circles),
+      MarkerLayer(markers: _markers),
+      // Required by the NLSC terms of use wherever their tiles are shown.
+      const RichAttributionWidget(
+        alignment: AttributionAlignment.bottomLeft,
+        attributions: [
+          TextSourceAttribution(Basemap.attribution, prependCopyright: false),
+        ],
+      ),
+    ],
+  );
+
+  /// Basemap switcher. The three NLSC layers come free with the tile service.
+  Widget _buildBasemapSwitcher() => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(8),
+    elevation: 2,
+    child: PopupMenuButton<Basemap>(
+      tooltip: '切換底圖',
+      icon: Icon(_basemap.icon, color: Colors.grey[800]),
+      onSelected: (basemap) => setState(() => _basemap = basemap),
+      itemBuilder: (context) => [
+        for (final basemap in Basemap.values)
+          PopupMenuItem(
+            value: basemap,
+            child: Row(
+              children: [
+                Icon(
+                  basemap.icon,
+                  size: 20,
+                  color: basemap == _basemap
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.grey[700],
+                ),
+                const SizedBox(width: 8),
+                Text(basemap.label),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -661,49 +616,16 @@ class _MapScreenState extends State<MapScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Google Map (全螢幕) - 固定高度不受鍵盤影響
-            Positioned.fill(
-              child: GoogleMap(
-                onMapCreated: _onMapCreated,
-                onCameraIdle: _onCameraIdle,
-                onTap: (LatLng position) {
-                  // 點擊地圖空白處收起搜尋欄和資訊頁
-                  if (_isSearching || _showShelterDetails) {
-                    setState(() {
-                      if (_isSearching) {
-                        _isSearching = false;
-                        _searchController.clear();
-                      }
-                      if (_showShelterDetails) {
-                        _showShelterDetails = false;
-                        _selectedShelter = null;
-                        _updateMapMarkers();
-                      }
-                    });
-                    // 收起鍵盤
-                    FocusScope.of(context).unfocus();
-                  }
-                },
-                initialCameraPosition: CameraPosition(
-                  target: _taipeiCenter,
-                  zoom: 12.0,
-                ),
-                markers: _markers,
-                circles: _circles, // 添加圓圈遮罩
-                mapType: MapType.normal,
-                myLocationEnabled: false,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: true,
-                compassEnabled: true,
-                mapToolbarEnabled: true,
-              ),
-            ), // Positioned.fill
-            // 浮動工具列與建議列表（Web 平台視圖上方需要攔截指標）
+            // 地圖（全螢幕）— 固定高度不受鍵盤影響
+            Positioned.fill(child: _buildMap()),
+            // 底圖切換
+            Positioned(right: 16, bottom: 260, child: _buildBasemapSwitcher()),
+            // 浮動工具列與建議列表
             Positioned(
               top: 16,
               left: 16,
               right: 16,
-              child: PointerInterceptor(
+              child: SizedBox(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1134,122 +1056,123 @@ class _MapScreenState extends State<MapScreen> {
                               );
                             }
 
-                            // 顯示列表
-                            return ListView.separated(
-                              shrinkWrap: true,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              itemCount: displayList.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(
-                                    height: 1,
-                                    indent: 16,
-                                    endIndent: 16,
-                                  ),
-                              itemBuilder: (context, index) {
-                                final shelter = displayList[index];
-                                // 計算距離
-                                String distanceText = '距離未知';
-                                if (_currentPosition != null &&
-                                    shelter.latitude != null &&
-                                    shelter.longitude != null) {
-                                  double distanceInMeters =
-                                      Geolocator.distanceBetween(
-                                        _currentPosition!.latitude,
-                                        _currentPosition!.longitude,
-                                        shelter.latitude is double
-                                            ? shelter.latitude
-                                            : double.tryParse(
-                                                    shelter.latitude.toString(),
-                                                  ) ??
-                                                  0.0,
-                                        shelter.longitude is double
-                                            ? shelter.longitude
-                                            : double.tryParse(
-                                                    shelter.longitude
-                                                        .toString(),
-                                                  ) ??
-                                                  0.0,
-                                      );
-                                  double distanceInKm = distanceInMeters / 1000;
-                                  distanceText =
-                                      '距離 ${distanceInKm.toStringAsFixed(2)} km';
-                                }
-
-                                // 檢查是否為選中的避難所
-                                final isSelected =
-                                    _selectedShelter?.name == shelter.name;
-
-                                return ListTile(
-                                  dense: true,
-                                  tileColor: isSelected
-                                      ? const Color(0xFFE3F2F4)
-                                      : null, // 被選中時改變背景色
-                                  leading: Icon(
-                                    Icons.location_on,
-                                    color: isSelected
-                                        ? const Color(0xFF3A8A9A)
-                                        : const Color(0xFF5AB4C5),
-                                    size: 20,
-                                  ),
-                                  title: Text(
-                                    shelter.name,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? const Color(0xFF3A8A9A)
-                                          : const Color(0xFF5AB4C5),
-                                      fontSize: 16,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.w500,
+                            // 顯示列表（結果數 + 無座標提示）
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildResultSummary(displayList),
+                                Flexible(
+                                  child: ListView.separated(
+                                    shrinkWrap: true,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        shelter.address,
-                                        style: TextStyle(
+                                    itemCount: displayList.length,
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(
+                                          height: 1,
+                                          indent: 16,
+                                          endIndent: 16,
+                                        ),
+                                    itemBuilder: (context, index) {
+                                      final shelter = displayList[index];
+                                      // 計算距離
+                                      final String distanceText;
+                                      if (!shelter.hasCoordinate) {
+                                        // 這些設施確實存在,只是門牌不是標準地址,
+                                        // 座標表定位不到 — 仍然列出並提供外部地圖。
+                                        distanceText = '尚無座標';
+                                      } else if (_currentPosition == null) {
+                                        distanceText = '距離未知';
+                                      } else {
+                                        final meters = distanceToShelter(
+                                          shelter,
+                                          _currentPosition!.latitude,
+                                          _currentPosition!.longitude,
+                                        );
+                                        distanceText =
+                                            '距離 ${(meters / 1000).toStringAsFixed(2)} km';
+                                      }
+
+                                      // 檢查是否為選中的避難所
+                                      final isSelected =
+                                          _selectedShelter?.name ==
+                                          shelter.name;
+
+                                      return ListTile(
+                                        dense: true,
+                                        tileColor: isSelected
+                                            ? const Color(0xFFE3F2F4)
+                                            : null, // 被選中時改變背景色
+                                        leading: Icon(
+                                          Icons.location_on,
+                                          color: isSelected
+                                              ? const Color(0xFF3A8A9A)
+                                              : const Color(0xFF5AB4C5),
+                                          size: 20,
+                                        ),
+                                        title: Text(
+                                          shelter.name,
+                                          style: TextStyle(
+                                            color: isSelected
+                                                ? const Color(0xFF3A8A9A)
+                                                : const Color(0xFF5AB4C5),
+                                            fontSize: 16,
+                                            fontWeight: isSelected
+                                                ? FontWeight.bold
+                                                : FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        subtitle: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              shelter.address,
+                                              style: TextStyle(
+                                                color: isSelected
+                                                    ? const Color(0xFF3A8A9A)
+                                                    : const Color(0xFF93D4DF),
+                                                fontSize: 12,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            Text(
+                                              distanceText,
+                                              style: TextStyle(
+                                                color: isSelected
+                                                    ? const Color(0xFF3A8A9A)
+                                                    : const Color(0xFF93D4DF),
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        trailing: Icon(
+                                          Icons.arrow_forward_ios,
                                           color: isSelected
                                               ? const Color(0xFF3A8A9A)
                                               : const Color(0xFF93D4DF),
-                                          fontSize: 12,
+                                          size: 16,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        distanceText,
-                                        style: TextStyle(
-                                          color: isSelected
-                                              ? const Color(0xFF3A8A9A)
-                                              : const Color(0xFF93D4DF),
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
+                                        onTap: () {
+                                          debugPrint('選擇避難所: ${shelter.name}');
+                                          // 調用 _onMarkerTapped 來顯示底部資訊面板
+                                          _onMarkerTapped(shelter);
+                                          // 關閉搜尋模式
+                                          setState(() {
+                                            _isSearching = false;
+                                            _searchController.clear();
+                                          });
+                                        },
+                                      );
+                                    },
                                   ),
-                                  trailing: Icon(
-                                    Icons.arrow_forward_ios,
-                                    color: isSelected
-                                        ? const Color(0xFF3A8A9A)
-                                        : const Color(0xFF93D4DF),
-                                    size: 16,
-                                  ),
-                                  onTap: () {
-                                    debugPrint('選擇避難所: ${shelter.name}');
-                                    // 調用 _onMarkerTapped 來顯示底部資訊面板
-                                    _onMarkerTapped(shelter);
-                                    // 關閉搜尋模式
-                                    setState(() {
-                                      _isSearching = false;
-                                      _searchController.clear();
-                                    });
-                                  },
-                                );
-                              },
+                                ),
+                              ],
                             );
                           },
                         ),
@@ -1277,7 +1200,7 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 10,
                           offset: const Offset(0, -3),
                         ),
@@ -1371,6 +1294,9 @@ class _MapScreenState extends State<MapScreen> {
                                 const SizedBox(height: 16),
                               ],
 
+                              // 座標品質提示
+                              _buildCoordinateNotice(_selectedShelter!),
+
                               // 基本資訊
                               _buildInfoRow('地址', _selectedShelter!.address),
                               _buildInfoRow('行政區', _selectedShelter!.district),
@@ -1431,10 +1357,20 @@ class _MapScreenState extends State<MapScreen> {
                                 '收容人數',
                                 '${_selectedShelter!.capacity} 人',
                               ),
-                              if (_selectedShelter!.area != null)
+                              if (_selectedShelter!.area.isNotEmpty)
                                 _buildInfoRow(
                                   '面積',
-                                  '${_selectedShelter!.area} ㎡',
+                                  // 上游此欄位偶爾是中文說明("俟搬遷後重新評估"),
+                                  // 直接加單位會變成 "俟搬遷後重新評估 ㎡"。
+                                  double.tryParse(
+                                            _selectedShelter!.area.replaceAll(
+                                              ',',
+                                              '',
+                                            ),
+                                          ) !=
+                                          null
+                                      ? '${_selectedShelter!.area} ㎡'
+                                      : _selectedShelter!.area,
                                 ),
                               _buildInfoRow(
                                 '室內空間',
@@ -1577,7 +1513,7 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 10,
                         offset: const Offset(0, -3),
                       ),
@@ -1677,26 +1613,15 @@ class _MapScreenState extends State<MapScreen> {
                                   Text(
                                     () {
                                       final shelter = _nearbyShelters[0];
-                                      if (shelter.latitude != null &&
-                                          shelter.longitude != null) {
-                                        double
-                                        distance = Geolocator.distanceBetween(
-                                          _currentPosition!.latitude,
-                                          _currentPosition!.longitude,
-                                          shelter.latitude is double
-                                              ? shelter.latitude
-                                              : double.parse(
-                                                  shelter.latitude.toString(),
-                                                ),
-                                          shelter.longitude is double
-                                              ? shelter.longitude
-                                              : double.parse(
-                                                  shelter.longitude.toString(),
-                                                ),
-                                        );
-                                        return '距離 ${(distance / 1000).toStringAsFixed(2)} 公里';
+                                      if (!shelter.hasCoordinate) {
+                                        return '尚無座標';
                                       }
-                                      return '距離未知';
+                                      final meters = distanceToShelter(
+                                        shelter,
+                                        _currentPosition!.latitude,
+                                        _currentPosition!.longitude,
+                                      );
+                                      return '距離 ${(meters / 1000).toStringAsFixed(2)} 公里';
                                     }(),
                                     style: const TextStyle(
                                       fontSize: 14,
@@ -1921,22 +1846,103 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // 計算到選中避難所的距離
-  double _calculateDistance() {
-    if (_currentPosition == null || _selectedShelter == null) return 0.0;
+  /// Result count, plus a note when some results cannot be mapped.
+  ///
+  /// Without this the list and the map disagree — a search can return 30 hits
+  /// while only 28 pins appear — and the user has no way to know why.
+  Widget _buildResultSummary(List<Shelter> displayList) {
+    final missing = displayList.where((s) => !s.hasCoordinate).length;
 
-    final lat = _selectedShelter!.latitude is double
-        ? _selectedShelter!.latitude
-        : double.parse(_selectedShelter!.latitude.toString());
-    final lon = _selectedShelter!.longitude is double
-        ? _selectedShelter!.longitude
-        : double.parse(_selectedShelter!.longitude.toString());
-
-    return Geolocator.distanceBetween(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-      lat,
-      lon,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          Text(
+            '共 ${displayList.length} 筆',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          if (missing > 0) ...[
+            const SizedBox(width: 8),
+            Icon(
+              Icons.location_off_outlined,
+              size: 14,
+              color: Colors.orange[700],
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                '其中 $missing 筆尚無座標,不會出現在地圖上',
+                style: TextStyle(fontSize: 12, color: Colors.orange[800]),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
+  }
+
+  /// Tells the user how much to trust the position we are showing.
+  ///
+  /// The upstream dataset carries no coordinates at all — every point is
+  /// joined in from other government datasets. About 5% of shelters cannot be
+  /// located and roughly a fifth of the rest sit at an interpolated street
+  /// position. Stating that is more honest than a map that looks uniformly
+  /// precise, and it is exactly the sort of thing someone needs to know before
+  /// walking somewhere during an emergency.
+  Widget _buildCoordinateNotice(Shelter shelter) {
+    final (String message, IconData icon, Color color) = switch (shelter) {
+      _ when !shelter.hasCoordinate => (
+        '此設施尚無精確座標,地圖上不會顯示標記。可用上方按鈕以地址開啟外部地圖。',
+        Icons.location_off_outlined,
+        Colors.orange,
+      ),
+      _ when !shelter.isCoordinateExact => (
+        '此位置為概略值(依鄰近門牌推估),實際入口可能相差數十公尺。',
+        Icons.help_outline,
+        Colors.amber,
+      ),
+      _ => ('', Icons.check, Colors.transparent),
+    };
+    if (message.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color.withValues(alpha: 0.9)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Distance to the selected shelter in metres, or 0 when it cannot be
+  /// computed (no fix, nothing selected, or the shelter has no coordinate).
+  double _calculateDistance() {
+    final shelter = _selectedShelter;
+    final position = _currentPosition;
+    if (position == null || shelter == null || !shelter.hasCoordinate) {
+      return 0.0;
+    }
+    return distanceToShelter(shelter, position.latitude, position.longitude);
   }
 }

@@ -1,0 +1,67 @@
+name: 問題回報
+description: 功能壞掉、行為不如預期
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **安全性問題請不要開在這裡** — 見 [SECURITY.md](../blob/master/SECURITY.md)。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 發生什麼事
+      description: 你預期會怎樣、實際上怎樣。
+      placeholder: |
+        預期：搜尋「圖書館」應該列出所有符合的避難所
+        實際：只列出 5 筆
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      placeholder: |
+        1. 啟動 server
+        2. flutter run -d chrome
+        3. 在搜尋框輸入…
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      multiple: true
+      options:
+        - Web (Chrome)
+        - Web (其他瀏覽器)
+        - Android
+        - iOS
+        - macOS
+        - 只有後端 API
+    validations:
+      required: true
+
+  - type: textarea
+    id: coverage-line
+    attributes:
+      label: 後端啟動訊息
+      description: |
+        貼上 server 啟動時印出的座標覆蓋率那一行。地圖沒有標記的問題八成出在這裡。
+      placeholder: '[DI] Coordinate table: data/shelter_coordinates.csv (380/401 shelters located, 94.8%)'
+      render: text
+
+  - type: input
+    id: shelter-code
+    attributes:
+      label: 收容所編號（如果是特定避難所的資料錯誤）
+      placeholder: SA100-0002
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: 版本
+      description: '`flutter --version` 的輸出，以及本 repo 的 commit hash。'
+      render: text

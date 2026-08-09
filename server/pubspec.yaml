@@ -1,25 +1,19 @@
 name: server
-description: A sample command-line application.
+description: >-
+  HTTP API for the 臺北市避難設施查詢系統. Proxies the Taipei OpenData
+  可供避難收容處所 dataset and joins in the coordinates it does not provide.
 version: 1.0.0
-# This package is not intended to be published to pub.dev (it has local path deps)
 publish_to: none
-# repository: https://github.com/my_org/my_repo
 
 environment:
   sdk: ^3.9.2
 
-# Add regular dependencies here.
 dependencies:
-  path: ^1.9.0
   http: ^1.5.0
   shelf: ^1.4.0
   shelf_router: ^1.0.0
   shelf_cors_headers: ^0.1.5
-  json_annotation: ^4.9.0
-  build_runner: ^2.10.1
-  json_serializable: ^6.11.1
   get_it: ^9.0.5
-  sqlite3: ^2.9.4
   logging: ^1.2.0
 
 dev_dependencies:

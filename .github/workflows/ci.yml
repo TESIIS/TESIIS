@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# Cancel superseded runs on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: server (Dart)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - run: dart pub get
+      - run: dart analyze --fatal-infos
+      - run: dart format --output=none --set-exit-if-changed .
+      # No network in the test suite: the upstream OpenData API would make CI
+      # flaky and would hammer a public service on every push. Fixtures and a
+      # MockClient stand in for it. The one file-system dependency is the
+      # committed coordinate table, which is exactly what we want guarded.
+      - run: dart test
+
+  flutter:
+    name: flutter_codefest (Flutter)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_codefest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter test
+      # Proves the web target still compiles. No API key is needed — that is
+      # the point of the NLSC basemap.
+      - run: flutter build web --dart-define=API_BASE_URL=http://localhost:8080/api
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs history to scan commits, not just the tree.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Belt and braces: fail if a file that must never ship gets committed,
+      # even if it contains nothing gitleaks recognises as a secret.
+      - name: Forbidden files
+        run: |
+          set -euo pipefail
+          matches=$(git ls-files \
+            | grep -Ei '(^|/)\.env$|(^|/)\.env\..*|\.db$|\.sqlite3?$|\.keystore$|\.jks$|\.p12$|\.pem$|\.mobileprovision$|google-services\.json$|GoogleService-Info\.plist$|local\.properties$' \
+            | grep -v '\.env\.example$' || true)
+          if [ -n "$matches" ]; then
+            echo "::error::These files must not be committed (see CONTRIBUTING.md):"
+            echo "$matches"
+            exit 1
+          fi
+          echo "No forbidden files in version control."

@@ -30,16 +30,26 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  google_maps_flutter: ^2.14.0
+  # Map rendering. flutter_map draws tiles into the Flutter canvas, so there is
+  # no platform view, no JS SDK and — with the 國土測繪中心 WMTS basemap — no
+  # API key. Replaces google_maps_flutter, which made the app unusable for
+  # anyone without a billed Google Cloud project.
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
   http: ^1.5.0
   geolocator: ^10.1.0
-  permission_handler: ^11.0.1
   flutter_svg: ^2.0.9
   url_launcher: ^6.2.5
-  pointer_interceptor: ^0.9.3
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+
+# Removed on purpose:
+#   permission_handler  — declared but never imported; geolocator handles
+#                         location permission itself.
+#   pointer_interceptor — only needed to catch pointer events over the Google
+#                         Maps platform view on web. flutter_map has no
+#                         platform view.
 
 dev_dependencies:
   flutter_test:

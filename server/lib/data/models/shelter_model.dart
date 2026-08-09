@@ -1,6 +1,6 @@
 // lib/data/models/shelter_model.dart
 
-import '../../domain/entities/shelter.dart';
+import '../../domain/entities/shelter_fields.dart';
 
 class ShelterModel {
   final int id;
@@ -71,20 +71,11 @@ class ShelterModel {
       if (dateStr != null) importDate = DateTime.tryParse(dateStr);
     } catch (_) {}
 
-    double? parseNullableDouble(dynamic v) {
-      if (v == null) return null;
-      if (v is num) return v.toDouble();
-      return double.tryParse(v.toString());
-    }
-
-    int parseInt(dynamic v) {
-      if (v == null) return 0;
-      if (v is num) return v.toInt();
-      return int.tryParse(v.toString()) ?? 0;
-    }
-
+    // Numbers arrive as strings, sometimes with a thousands separator
+    // ("14,495") and sometimes as free text ("俟搬遷後重新評估"); see
+    // ShelterNumber.
     return ShelterModel(
-      id: parseInt(json['_id']),
+      id: ShelterNumber.parseInt(json['_id']),
       importDate: importDate,
       shelterCode: (json['收容所編號'] ?? '').toString(),
       name: (json['名稱'] ?? '').toString(),
@@ -103,45 +94,21 @@ class ShelterModel {
       indoor: json['室內']?.toString(),
       outdoor: json['室外']?.toString(),
       serviceVillages: json['服務里別']?.toString(),
-      capacity: parseInt(json['容納人數']),
-      area: parseNullableDouble(json['收容所面積（平方公尺）'] ?? json['收容所面積'] ?? json['面積']),
+      capacity: ShelterNumber.parseInt(json['容納人數']),
+      area: ShelterNumber.parseDouble(
+        json['收容所面積（平方公尺）'] ?? json['收容所面積'] ?? json['面積'],
+      ),
       contactName: json['聯絡人姓名']?.toString(),
       contactPhone: json['聯絡人連絡電話']?.toString(),
       managerName: json['管理人姓名']?.toString(),
       managerPhone: json['管理人連絡電話']?.toString(),
       notes: json['備考']?.toString(),
-      x: parseNullableDouble(json['座標x'] ?? json['X'] ?? json['longitude']),
-      y: parseNullableDouble(json['座標y'] ?? json['Y'] ?? json['latitude']),
+      x: ShelterNumber.parseDouble(
+        json['座標x'] ?? json['X'] ?? json['longitude'],
+      ),
+      y: ShelterNumber.parseDouble(
+        json['座標y'] ?? json['Y'] ?? json['latitude'],
+      ),
     );
   }
-  Shelter toEntity() => Shelter(
-        id: id,
-        importDate: importDate,
-        shelterCode: shelterCode,
-        name: name,
-        city: city,
-        zipcode: zipcode,
-        township: township,
-        village: village,
-        address: address,
-        type: type,
-        flood: flood,
-        quake: quake,
-        landslide: landslide,
-        tsunami: tsunami,
-        relief: relief,
-        accessible: accessible,
-        indoor: indoor,
-        outdoor: outdoor,
-        serviceVillages: serviceVillages,
-        capacity: capacity,
-        area: area,
-        contactName: contactName,
-        contactPhone: contactPhone,
-        managerName: managerName,
-        managerPhone: managerPhone,
-        notes: notes,
-        x: x,
-        y: y,
-      );
 }

@@ -1,0 +1,27 @@
+name: 功能建議
+description: 建議新功能或改進
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解決什麼問題
+      description: 請描述使用情境，不要只描述解法。
+      placeholder: 災時想知道哪個避難所還有空位，但目前只看得到總容納人數。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你想到的做法
+    validations:
+      required: true
+
+  - type: textarea
+    id: data-source
+    attributes:
+      label: 需要什麼資料
+      description: |
+        如果這個功能需要現在沒有的資料，請說明從哪裡取得。
+        本專案只使用政府開放資料與免授權服務，請優先考慮 data.taipei 或 data.gov.tw。

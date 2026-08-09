@@ -1,17 +1,18 @@
-import 'package:flutter_codefest/data/models/shelter.dart';
-import 'package:flutter_codefest/data/models/api_response.dart';
 import 'package:flutter_codefest/data/datasources/api.dart';
+import 'package:flutter_codefest/data/models/api_response.dart';
+import 'package:flutter_codefest/data/models/shelter.dart';
 
-Future<List<Shelter>> fetchAllShelters() async {
-  final res = await ApiService.get('/shelters'); // ← 你自己的 endpoint
-
-  final data = ApiResponse<List<Shelter>>.fromJson(
-    res,
-    (json) => (json as List<dynamic>).map((e) => Shelter.fromJson(e)).toList(),
-  );
-
-  return data.data;
+List<Shelter> _parseShelters(dynamic response) {
+  return ApiResponse<List<Shelter>>.fromJson(
+    response,
+    (json) => (json as List<dynamic>)
+        .map((e) => Shelter.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  ).data;
 }
+
+Future<List<Shelter>> fetchAllShelters() async =>
+    _parseShelters(await ApiService.get('/shelters'));
 
 Future<List<Shelter>> fetchFilteredShelters({
   String? q,
@@ -29,18 +30,21 @@ Future<List<Shelter>> fetchFilteredShelters({
   String? indoor,
   String? outdoor,
 }) async {
-  // 組裝 query 參數
-  final Map<String, String> queryParams = {};
+  final queryParams = <String, String>{
+    if (q != null && q.isNotEmpty) 'q': q,
+    if (city != null) 'city': city,
+    if (township != null) 'township': township,
+    if (village != null) 'village': village,
+    if (type != null) 'type': type,
+    'match': match,
+  };
 
-  if (q != null) queryParams['q'] = q;
-  if (city != null) queryParams['city'] = city;
-  if (township != null) queryParams['township'] = township;
-  if (village != null) queryParams['village'] = village;
-  if (type != null) queryParams['type'] = type;
-  queryParams['match'] = match;
-
-  // 災害條件：Y/N/備用 → true
-  Map<String, String?> hazardMap = {
+  // Hazard conditions go over the wire as 'Y'.
+  //
+  // This used to send the string 'true'. The server happened to accept it, but
+  // it is not what the API documents and it made ?quake=備用 — which asks for
+  // that variant specifically — impossible to express. Pass the value through.
+  <String, String?>{
     'flood': flood,
     'quake': quake,
     'landslide': landslide,
@@ -49,20 +53,35 @@ Future<List<Shelter>> fetchFilteredShelters({
     'accessible': accessible,
     'indoor': indoor,
     'outdoor': outdoor,
-  };
-
-  hazardMap.forEach((key, value) {
-    if (value != null && (value.toUpperCase() == 'Y' || value == '備用')) {
-      queryParams[key] = 'true';
-    }
+  }.forEach((key, value) {
+    if (value != null && value.isNotEmpty) queryParams[key] = value;
   });
 
-  // 呼叫 API，帶上 query 參數
-  final res = await ApiService.get('/shelters', queryParams: queryParams);
-  final data = ApiResponse<List<Shelter>>.fromJson(
-    res,
-    (json) => (json as List<dynamic>).map((e) => Shelter.fromJson(e)).toList(),
+  return _parseShelters(
+    await ApiService.get('/shelters', queryParams: queryParams),
   );
+}
 
-  return data.data;
+/// Shelters near a point, sorted by distance, computed server-side.
+///
+/// Preferred over downloading everything and sorting locally: on mobile data
+/// during an emergency, transferring 400 records to find the nearest three is
+/// the wrong trade.
+Future<List<Shelter>> fetchNearbyShelters({
+  required double lat,
+  required double lng,
+  double? radiusMeters,
+  int limit = 10,
+}) async {
+  return _parseShelters(
+    await ApiService.get(
+      '/shelters/nearby',
+      queryParams: {
+        'lat': '$lat',
+        'lng': '$lng',
+        if (radiusMeters != null) 'radius': '$radiusMeters',
+        'limit': '$limit',
+      },
+    ),
+  );
 }

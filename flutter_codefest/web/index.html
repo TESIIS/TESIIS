@@ -18,9 +18,18 @@
 
     <meta charset="UTF-8" />
     <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
-    <meta name="description" content="A new Flutter project." />
-    <!-- TODO: inject your own Google Maps API key via build-time config or env. The value is intentionally blank to avoid committing secrets. -->
-    <script src="https://maps.googleapis.com/maps/api/js?key="></script>
+    <meta name="description" content="臺北市避難設施查詢系統" />
+    <!--
+      No map SDK is loaded here.
+
+      The map is rendered by flutter_map against the 內政部國土測繪中心 WMTS
+      tile service, which needs no API key and no third-party script. That is
+      deliberate: the previous Google Maps setup meant a fresh clone showed a
+      blank page until someone supplied a billed API key.
+
+      Backend location is a build-time setting, not a runtime one:
+        flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
+    -->
     <!-- iOS meta tags & icons -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
