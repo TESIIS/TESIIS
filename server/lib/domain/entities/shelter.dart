@@ -27,8 +27,19 @@ class Shelter {
   final String? managerName; // 管理人姓名
   final String? managerPhone; // 管理人連絡電話
   final String? notes; // 備考
-  final double? x; // 座標x (若存在)
-  final double? y; // 座標y (若存在)
+  // Coordinates never come from the OpenData dataset — it has no such columns.
+  // They are joined in from the committed coordinate table; see
+  // data/shelter_coordinates.csv and CoordinateSource.
+  final double? x; // 座標x = longitude
+  final double? y; // 座標y = latitude
+
+  /// Which dataset the coordinate came from, or null when there is none.
+  /// Exposed so clients can distinguish a surveyed government point from a
+  /// best-effort name match.
+  final String? coordinateSource;
+
+  /// How much to trust the coordinate: exact / name_match / approx.
+  final String? coordinateConfidence;
 
   Shelter({
     required this.id,
@@ -59,5 +70,9 @@ class Shelter {
     this.notes,
     this.x,
     this.y,
+    this.coordinateSource,
+    this.coordinateConfidence,
   });
+
+  bool get hasCoordinate => x != null && y != null;
 }
