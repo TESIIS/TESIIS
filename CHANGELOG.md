@@ -8,15 +8,15 @@
 
 ### Added
 
-- **座標資料管線。** 新增 `server/tool/build_coordinates.dart`，離線 join 三個政府開放資料集產生 `server/data/shelter_coordinates.csv` 並進版控。401 筆避難所中 380 筆（94.8%）取得座標，先前是 0 筆。
+- **座標資料管線。** 新增 `server/tool/build_coordinates.dart`，離線 join 兩個政府開放資料集產生 `server/data/shelter_coordinates.csv` 並進版控。401 筆避難所中 370 筆（92.3%）取得座標，先前是 0 筆。進版控的座標表**只含政府資料開放授權條款第 1 版的資料**；以 OpenStreetMap 補齊的 `--overpass` 是 opt-in 且預設不使用，因為它會讓成果落入具傳染性的 ODbL。以 2.5 個百分點的覆蓋率換取單純的授權條件。
 - `GET /api/shelters/nearby?lat=&lng=&radius=&limit=` — 距離計算移到 server 端，回傳 `距離公尺` 與 `excludedWithoutCoordinates`。
 - API 每筆回應新增 `座標來源` 與 `座標精度`；`/stats` 新增 `coordinateCoverage`。
 - 上游資料快取（`CACHE_TTL_SECONDS`，預設 10 分鐘），含上游失敗時的 stale-on-error 降級。
 - 底圖切換（通用電子地圖／暗色／正射影像），三種皆為 NLSC 免費圖層。
 - App 明確標示座標品質：無座標的設施仍會列出並提供「以地址開啟外部地圖」，`approx` 座標會顯示概略位置警語。
-- 測試從零建立：server 85 個、Flutter 22 個。
+- 測試從零建立：server 96 個、Flutter 22 個。
 - CI（analyze／format／test／web build／gitleaks／禁止檔名檢查）與每週上游資料監看排程。
-- 開源治理：`LICENSE`（MIT）、`NOTICE.md`（資料授權，含 ODbL 說明）、`CONTRIBUTING.md`（含禁止提交清單）、`SECURITY.md`、`CODE_OF_CONDUCT.md`、issue／PR 範本、`.githooks/pre-commit` 機密掃描。
+- 開源治理：`LICENSE`（MIT）、`NOTICE.md`（資料授權與再散布標示要求）、`CONTRIBUTING.md`（含禁止提交清單）、`SECURITY.md`、`CODE_OF_CONDUCT.md`、issue／PR 範本、`.githooks/pre-commit` 機密掃描。
 
 ### Changed
 

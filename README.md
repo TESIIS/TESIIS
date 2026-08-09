@@ -19,7 +19,7 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 啟動後你應該看到後端印出：
 
 ```text
-[DI] Coordinate table: data/shelter_coordinates.csv (380/401 shelters located, 94.8%)
+[DI] Coordinate table: data/shelter_coordinates.csv (370/401 shelters located, 92.3%)
 ✅ Server running on http://0.0.0.0:8080
 ```
 
@@ -31,7 +31,7 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 
 本專案做三件事：
 
-1. **補上座標。** 離線 join 兩個政府開放資料集，把 401 筆中的 380 筆定位出來（94.8%），成果進版控，所以任何人 clone 下來立刻可用。
+1. **補上座標。** 離線 join 兩個政府開放資料集，把 401 筆中的 370 筆定位出來（92.3%），成果進版控，所以任何人 clone 下來立刻可用。
 2. **處理上游資料的怪癖。** 災害欄位不是單純 Y/N、里別分隔符不一致、數值欄位混雜中文說明——這些都在後端統一處理過。
 3. **免金鑰的地圖。** 底圖用內政部國土測繪中心的免費 WMTS 服務，不需要 Google Cloud 帳號。
 
@@ -77,33 +77,32 @@ Flutter → ShelterController → ShelterService → ShelterRepositoryImpl
 ③ 抓 北市警政APP_防空避難設備位置        6052 筆（有 座標x/座標y）
 ④ bbox 品質閘：座標落在臺北以外者一律丟棄
 ⑤ 以正規化門牌地址 join ② → 未命中者 join ③
-⑥ 殘餘者用 Overpass 依名稱查（公園、捷運站…）
-⑦ 再殘餘者用同路段最近門牌內插
+⑥ 殘餘者用同路段最近門牌內插
 ```
 
 重建：
 
 ```bash
 cd server
-dart run tool/build_coordinates.dart --report              # 只用官方資料
-dart run tool/build_coordinates.dart --overpass --report   # 加上 OSM 補齊
-dart run tool/build_coordinates.dart --refresh ...         # 忽略快取，重抓上游
+dart run tool/build_coordinates.dart --report              # 現行做法，只用政府開放資料
+dart run tool/build_coordinates.dart --refresh --report    # 忽略快取，重抓上游
 ```
+
+還有一個 `--overpass` 旗標會拿 OpenStreetMap 補齊剩餘的點，覆蓋率可到 94.8%。**預設不要用**——它會讓產出的 CSV 落入具傳染性的 ODbL，見 [NOTICE.md](NOTICE.md)。
 
 ### 座標品質（2026-08-09 實測）
 
 | 來源 | 筆數 | 說明 |
 |---|---|---|
-| `nfa_point_file` | 251 | 消防署點位檔，同類設施，最可信 |
-| `taipei_airraid` | 108 | 防空避難設備位置，同地址不同設施類別 |
-| `osm_overpass` | 21 | OpenStreetMap 名稱比對（**ODbL**，見 [NOTICE.md](NOTICE.md)） |
-| 無座標 | 21 | 門牌本身不是地址（「樂群一路旁基隆河截彎取直範圍內」） |
+| `nfa_point_file` | 252 | 消防署點位檔，同類設施，最可信 |
+| `taipei_airraid` | 118 | 防空避難設備位置，同地址不同設施類別 |
+| 無座標 | 31 | 門牌本身不是地址（「樂群一路旁基隆河截彎取直範圍內」） |
 
 | 精度 | 筆數 | 意義 |
 |---|---|---|
 | `exact` | 285 | 正規化地址完全比對到政府資料集 |
 | `name_match` | 6 | 以設施名稱比對 |
-| `approx` | 89 | 依鄰近門牌推估，可能相差數十公尺 |
+| `approx` | 79 | 依鄰近門牌推估，可能相差數十公尺 |
 
 API 每筆回應都帶 `座標來源` 與 `座標精度`，App 會在介面上標示 `approx` 與無座標的情況——**不會假裝每個點都一樣精確**。
 
@@ -163,8 +162,8 @@ curl 'localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&lim
 同一組過濾參數，回傳 `total`／`byType`／`byRegion`／`items`／`filters`，以及 `coordinateCoverage`：
 
 ```json
-{ "total": 401, "withCoordinates": 380, "missing": 21, "ratio": 0.9476,
-  "bySource": { "nfa_point_file": 251, "taipei_airraid": 108, "osm_overpass": 21, "none": 21 } }
+{ "total": 401, "withCoordinates": 370, "missing": 31, "ratio": 0.9227,
+  "bySource": { "nfa_point_file": 252, "taipei_airraid": 118, "none": 31 } }
 ```
 
 ---
@@ -204,7 +203,7 @@ flutter build web       --dart-define=API_BASE_URL=https://api.example.tw/api
 # 後端
 cd server
 dart analyze        # 0 issues
-dart test           # 85 passed
+dart test           # 96 passed
 
 # 前端
 cd flutter_codefest
@@ -252,7 +251,7 @@ git config core.hooksPath .githooks
 
 程式碼以 **MIT** 授權（見 [LICENSE](LICENSE)）。
 
-**資料檔另有授權**——`server/data/shelter_coordinates.csv` 混合了政府資料開放授權條款第 1 版與 ODbL（OpenStreetMap 部分）。再散布前請務必讀 [NOTICE.md](NOTICE.md)。
+**資料檔另有授權**——`server/data/shelter_coordinates.csv` 全部來自政府資料開放授權條款第 1 版的兩個資料集，不含任何 share-alike 授權的資料。再散布前請讀 [NOTICE.md](NOTICE.md) 的標示要求。
 
 地圖底圖由**內政部國土測繪中心**提供，依其使用規範，顯示圖磚的畫面必須標示來源。App 已在地圖左下角標示，**請勿移除**。
 
@@ -269,7 +268,7 @@ git config core.hooksPath .githooks
 - [避難收容處所點位檔](https://data.gov.tw/dataset/73242) — 內政部消防署
 - [北市警政APP_防空避難設備位置](https://data.taipei/dataset/detail?id=83eecdf1-3bbb-40f9-9484-b55b700c37ef) — 臺北市政府警察局
 - [國土測繪圖資服務雲 WMTS](https://maps.nlsc.gov.tw/) — 內政部國土測繪中心
-- [OpenStreetMap](https://www.openstreetmap.org/) — © OpenStreetMap contributors (ODbL)
+- [OpenStreetMap](https://www.openstreetmap.org/) — © OpenStreetMap contributors (ODbL)，**僅 `--overpass` opt-in 時使用，進版控的座標表不含其資料**
 
 ---
 
