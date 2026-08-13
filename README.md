@@ -5,7 +5,7 @@
 **Clone 下來就能跑，不需要任何 API key。**
 
 ```bash
-git clone <repo>
+git clone https://github.com/Twcat0503/2025Taipei-codefest-team30.git
 cd 2025Taipei-codefest-team30
 
 # 後端
