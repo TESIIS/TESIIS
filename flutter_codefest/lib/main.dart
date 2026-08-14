@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '臺北市避難設施查詢',
+      title: '臺北市避難設施資訊整合系統',
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green[700]),
       home: const Scaffold(body: MapScreen()),
     );

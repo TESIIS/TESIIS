@@ -1,0 +1,47 @@
+name: taipei-shelter-web
+
+services:
+  api:
+    build:
+      context: ./server
+    environment:
+      PORT: "8080"
+      COORDINATES_CSV: data/shelter_coordinates.csv
+      CACHE_TTL_SECONDS: "600"
+      LOG_LEVEL: info
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 10s
+
+  web:
+    build:
+      context: ./flutter_codefest
+      args:
+        API_BASE_URL: /api
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 10s

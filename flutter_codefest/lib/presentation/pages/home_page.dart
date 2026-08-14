@@ -682,7 +682,7 @@ class _MapScreenState extends State<MapScreen> {
                                       horizontal: 12,
                                     ),
                                     child: Text(
-                                      '避難設施資訊整合系統',
+                                      '臺北避難設施地圖',
                                       style: TextStyle(
                                         color: Color(0xFF5AB4C5),
                                         fontSize: 18,

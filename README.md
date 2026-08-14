@@ -1,12 +1,39 @@
-# 臺北市避難設施查詢系統
+# 臺北市避難設施資訊整合系統
 
-用地圖找出離你最近的避難收容處所。2025 臺北程式設計節城市通微服務大黑客松 團隊 30 作品。
+獨立運作的 Flutter Web，用地圖找出離你最近的避難收容處所。源自 2025
+臺北程式設計節城市通微服務大黑客松團隊 30 作品；目前不依賴臺北通 SDK、
+登入狀態或內嵌容器，可直接以一般瀏覽器開啟。
 
 **Clone 下來就能跑，不需要任何 API key。**
+
+## Docker 啟動（建議）
 
 ```bash
 git clone https://github.com/Twcat0503/2025Taipei-codefest-team30.git
 cd 2025Taipei-codefest-team30
+docker compose up --build
+```
+
+開啟 <http://localhost:8080>。對外只有一個 Web port：Nginx 提供 Flutter
+靜態檔，並把同源的 `/api/*` 轉送到內部 Dart API。健康檢查：
+
+```bash
+curl http://localhost:8080/healthz
+docker compose ps
+```
+
+停止服務：
+
+```bash
+docker compose down
+```
+
+若 8080 已被占用，可用 `WEB_PORT=8088 docker compose up --build`。
+
+## 不使用 Docker 的本機開發
+
+```bash
+# Clone 後進入 repo 根目錄
 
 # 後端
 cd server && dart pub get && dart run bin/server.dart
@@ -39,7 +66,7 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 
 ## 架構
 
-兩個各自獨立的 Dart package，沒有共用 package 或 monorepo 工具。
+兩個各自獨立的 Dart package，由 Docker Compose 組成單一對外 Web 服務。
 
 ```text
 server/            Dart + shelf HTTP API
@@ -58,10 +85,16 @@ flutter_codefest/  Flutter App
 請求流：
 
 ```text
-Flutter → ShelterController → ShelterService → ShelterRepositoryImpl
-                                                 ├─ ShelterApi        (data.taipei，10 分鐘快取)
-                                                 └─ CoordinateSource  (本地 CSV 座標表)
+Browser → Nginx :8080 ─┬─ Flutter Web 靜態檔
+                       └─ /api/* → Dart API :8080（僅容器內部）
+                                      └─ ShelterRepositoryImpl
+                                           ├─ ShelterApi (data.taipei，10 分鐘快取)
+                                           └─ CoordinateSource (本地 CSV 座標表)
 ```
+
+Nginx 明確送出 `X-Frame-Options: DENY` 與 `frame-ancestors 'none'`，正式版是
+獨立網站，不應再嵌入臺北通或其他 iframe。全國化方案見
+[`docs/nationwide-roadmap.md`](docs/nationwide-roadmap.md)。
 
 ---
 
@@ -115,6 +148,8 @@ API 每筆回應都帶 `座標來源` 與 `座標精度`，App 會在介面上�
 ## API
 
 Base URL 預設 `http://localhost:8080/api`。
+
+另有 `GET /healthz`，供 Docker／負載平衡器檢查程序與座標表是否已就緒。
 
 ### `GET /shelters`
 
@@ -191,6 +226,9 @@ curl 'localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&lim
 flutter run   -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 flutter build web       --dart-define=API_BASE_URL=https://api.example.tw/api
 ```
+
+Docker production build 使用 `API_BASE_URL=/api`，由同源反向代理連到後端；因此
+同一個站點不會遇到 CORS 或 HTTPS mixed-content 問題。
 
 - Android 模擬器連本機要用 `10.0.2.2`，不是 `localhost`。
 - Flutter Web 若以 https 提供服務，後端也必須是 https，否則會被瀏覽器的 mixed-content 擋掉。

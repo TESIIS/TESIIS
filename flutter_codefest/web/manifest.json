@@ -1,12 +1,12 @@
 {
-    "name": "flutter_codefest",
-    "short_name": "flutter_codefest",
+    "name": "臺北市避難設施資訊整合系統",
+    "short_name": "臺北避難設施地圖",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#F4FBFC",
+    "theme_color": "#5AB4C5",
+    "description": "臺北市避難設施地圖、災害類型篩選與鄰近收容處所查詢",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

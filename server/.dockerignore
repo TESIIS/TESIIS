@@ -1,0 +1,10 @@
+.dart_tool
+.env
+.env.*
+!.env.example
+build
+coverage
+logs
+test
+tool
+*.log

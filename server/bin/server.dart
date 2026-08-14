@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:logging/logging.dart';
@@ -30,17 +31,14 @@ Future<void> main(List<String> args) async {
   Env.load();
   Logger.root.level = _logLevelFrom(Env.logLevel);
 
-  final logFile = File('logs/server.log');
-  await logFile.parent.create(recursive: true);
-  final logSink = logFile.openWrite(mode: FileMode.append);
-
   Logger.root.onRecord.listen((record) {
-    logSink.writeln(
+    final sink = record.level.value >= Level.WARNING.value ? stderr : stdout;
+    sink.writeln(
       '${record.level.name}: ${record.time}: '
       '${record.loggerName}: ${record.message}',
     );
-    if (record.error != null) logSink.writeln('  error: ${record.error}');
-    if (record.stackTrace != null) logSink.writeln('  ${record.stackTrace}');
+    if (record.error != null) sink.writeln('  error: ${record.error}');
+    if (record.stackTrace != null) sink.writeln('  ${record.stackTrace}');
   });
 
   final logger = Logger('Server');
@@ -54,14 +52,24 @@ Future<void> main(List<String> args) async {
     coordinates = di.loadCoordinateSource();
   } on di.CoordinateTableUnavailable catch (e) {
     stderr.writeln('\n$e\n');
-    await logSink.close();
     exit(1);
   }
 
   di.setupDependencies(coordinates: coordinates);
   final shelterController = di.getIt<ShelterController>();
 
-  final router = Router()..mount('/api/', shelterController.router.call);
+  final router = Router()
+    ..get('/healthz', (Request _) {
+      return Response.ok(
+        jsonEncode({
+          'status': 'ok',
+          'service': 'taipei-shelter-api',
+          'coordinateCoverage': coordinates.coverage.toJson(),
+        }),
+        headers: const {'content-type': 'application/json; charset=utf-8'},
+      );
+    })
+    ..mount('/api/', shelterController.router.call);
 
   // Must be registered before serving, otherwise unmatched requests fall
   // through to shelf's default handler instead of this one.
@@ -86,8 +94,6 @@ Future<void> main(List<String> args) async {
   Future<void> shutdown(ProcessSignal signal) async {
     logger.info('Received signal $signal, shutting down...');
     await server.close();
-    await logSink.flush();
-    await logSink.close();
     exit(0);
   }
 

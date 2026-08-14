@@ -54,7 +54,16 @@ jobs:
       - run: flutter test
       # Proves the web target still compiles. No API key is needed — that is
       # the point of the NLSC basemap.
-      - run: flutter build web --dart-define=API_BASE_URL=http://localhost:8080/api
+      - run: flutter build web --dart-define=API_BASE_URL=/api
+
+  containers:
+    name: Docker Compose build
+    runs-on: ubuntu-latest
+    needs: [server, flutter]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
+      - run: docker compose build
 
   secrets:
     name: secret scan

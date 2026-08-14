@@ -11,6 +11,9 @@ class ApiService {
   ///   flutter run   --dart-define=API_BASE_URL=http://localhost:8080/api
   ///   flutter build --dart-define=API_BASE_URL=https://api.example.tw/api
   ///
+  /// The standalone Docker image builds with `/api`, which keeps browser and
+  /// API traffic on one origin. Nginx forwards that path to the Dart service.
+  ///
   /// Android emulators reach the host machine at 10.0.2.2, not localhost.
   ///
   /// Use https in production: a Flutter Web app served over https cannot call
