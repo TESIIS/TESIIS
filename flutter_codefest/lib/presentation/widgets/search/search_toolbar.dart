@@ -75,7 +75,10 @@ class SearchToolbar extends StatelessWidget {
                       key: const ValueKey('search-field'),
                       controller: controller,
                       autofocus: false,
-                      style: TextStyle(color: colorScheme.primary, fontSize: 18),
+                      style: TextStyle(
+                        color: colorScheme.primary,
+                        fontSize: 18,
+                      ),
                       decoration: InputDecoration(
                         hintText: '搜尋地點、避難所...',
                         hintStyle: TextStyle(
@@ -86,7 +89,10 @@ class SearchToolbar extends StatelessWidget {
                           vertical: 13,
                           horizontal: 0,
                         ),
-                        prefixIcon: Icon(Icons.search, color: colorScheme.primary),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: colorScheme.primary,
+                        ),
                       ),
                       onSubmitted: onSearchChanged,
                       onChanged: onSearchChanged,

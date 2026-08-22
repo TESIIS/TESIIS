@@ -26,7 +26,9 @@ class ShelterDetailSheet extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final position = currentPosition;
     final canNavigate =
-        position != null && shelter.latitude != null && shelter.longitude != null;
+        position != null &&
+        shelter.latitude != null &&
+        shelter.longitude != null;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.35,
@@ -68,7 +70,11 @@ class ShelterDetailSheet extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.location_on, color: colorScheme.primary, size: 28),
+                        Icon(
+                          Icons.location_on,
+                          color: colorScheme.primary,
+                          size: 28,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -80,7 +86,10 @@ class ShelterDetailSheet extends StatelessWidget {
                             ),
                           ),
                         ),
-                        IconButton(icon: const Icon(Icons.close), onPressed: onClose),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: onClose,
+                        ),
                       ],
                     ),
                     const Divider(height: 24),
@@ -90,7 +99,10 @@ class ShelterDetailSheet extends StatelessWidget {
                         width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: onNavigate,
-                          icon: Icon(Icons.navigation, color: colorScheme.onPrimary),
+                          icon: Icon(
+                            Icons.navigation,
+                            color: colorScheme.onPrimary,
+                          ),
                           label: Text(
                             '開始導航 '
                             '(${(distanceToShelter(shelter, position.latitude, position.longitude) / 1000).toStringAsFixed(2)} 公里)',
@@ -132,11 +144,20 @@ class ShelterDetailSheet extends StatelessWidget {
                         runSpacing: 8,
                         children: [
                           if (shelter.flood == 'Y')
-                            const DisasterChip(label: '水災', icon: Icons.water_drop),
+                            const DisasterChip(
+                              label: '水災',
+                              icon: Icons.water_drop,
+                            ),
                           if (shelter.earthquake == 'Y')
-                            const DisasterChip(label: '地震', icon: Icons.warning),
+                            const DisasterChip(
+                              label: '地震',
+                              icon: Icons.warning,
+                            ),
                           if (shelter.landslide == 'Y')
-                            const DisasterChip(label: '土石流', icon: Icons.landscape),
+                            const DisasterChip(
+                              label: '土石流',
+                              icon: Icons.landscape,
+                            ),
                           if (shelter.tsunami == 'Y')
                             const DisasterChip(label: '海嘯', icon: Icons.waves),
                         ],
@@ -153,12 +174,20 @@ class ShelterDetailSheet extends StatelessWidget {
                         label: '面積',
                         // 上游此欄位偶爾是中文說明("俟搬遷後重新評估"),
                         // 直接加單位會變成 "俟搬遷後重新評估 ㎡"。
-                        value: double.tryParse(shelter.area.replaceAll(',', '')) != null
+                        value:
+                            double.tryParse(shelter.area.replaceAll(',', '')) !=
+                                null
                             ? '${shelter.area} ㎡'
                             : shelter.area,
                       ),
-                    InfoRow(label: '室內空間', value: shelter.indoor == 'Y' ? '有' : '無'),
-                    InfoRow(label: '室外空間', value: shelter.outdoor == 'Y' ? '有' : '無'),
+                    InfoRow(
+                      label: '室內空間',
+                      value: shelter.indoor == 'Y' ? '有' : '無',
+                    ),
+                    InfoRow(
+                      label: '室外空間',
+                      value: shelter.outdoor == 'Y' ? '有' : '無',
+                    ),
                     InfoRow(
                       label: '無障礙設施',
                       value: shelter.accessible == 'Y' ? '有' : '無',
@@ -182,7 +211,10 @@ class ShelterDetailSheet extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         shelter.remarks,
-                        style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: colorScheme.onSurface,
+                        ),
                       ),
                     ],
                   ],

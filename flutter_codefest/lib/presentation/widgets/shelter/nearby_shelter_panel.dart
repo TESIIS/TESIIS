@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_codefest/core/constants/map_constants.dart';
-import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/presentation/widgets/common/disaster_chip.dart';
@@ -108,87 +107,77 @@ class NearbyShelterPanel extends StatelessWidget {
 
   Widget _buildMobileBand(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final screenHeight = MediaQuery.of(context).size.height;
 
-    return Positioned.fill(
-      child: Stack(
+    // Anchored at bottom:0 with no top/height, so the card sizes itself to
+    // its content and is guaranteed to sit flush with the bottom of the
+    // screen — no gap, regardless of viewport height. The previous version
+    // computed the card's height as a fraction of MediaQuery's *full*
+    // screen height while actually living inside the Scaffold's SafeArea
+    // (a *smaller* box), so the two never quite lined up and left a gap
+    // that grew with any top/bottom inset.
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Positioned(
-            right: 16,
-            bottom: screenHeight * 0.6 + 16,
+          Padding(
+            padding: const EdgeInsets.only(right: 16, bottom: 12),
             child: _ManualButton(colorScheme: colorScheme, onTap: onOpenManual),
           ),
-
-          // 底部往上提升後，補一個背景避免透明露出地圖
-          Positioned(
-            bottom: AppPlatform.isWeb ? -16 : 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: screenHeight * 0.10 + (AppPlatform.isWeb ? 16 : 0),
-              color: colorScheme.surface,
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              16 + MediaQuery.paddingOf(context).bottom,
             ),
-          ),
-          Positioned(
-            bottom: screenHeight * 0.10 + (AppPlatform.isWeb ? -16 : 0),
-            left: 0,
-            right: 0,
-            child: Container(
-              height: screenHeight * 0.25,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
-                  ),
-                ],
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
               ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, -3),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: colorScheme.surface,
+                      color: colorScheme.outlineVariant,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _Header(colorScheme: colorScheme),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _InfoBlock(
-                            nearest: nearest,
-                            distanceText: _distanceText,
-                            colorScheme: colorScheme,
-                          ),
-                          const Spacer(),
-                          _ActionButtons(
-                            colorScheme: colorScheme,
-                            onNavigate: onNavigate,
-                            onViewDetail: onViewDetail,
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                _Header(colorScheme: colorScheme),
+                const SizedBox(height: 12),
+                _InfoBlock(
+                  nearest: nearest,
+                  distanceText: _distanceText,
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 12),
+                _ActionButtons(
+                  colorScheme: colorScheme,
+                  onNavigate: onNavigate,
+                  onViewDetail: onViewDetail,
+                ),
+              ],
             ),
           ),
         ],
@@ -285,7 +274,10 @@ class _InfoBlock extends StatelessWidget {
             Expanded(
               child: Text(
                 nearest.address,
-                style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -295,11 +287,18 @@ class _InfoBlock extends StatelessWidget {
         const SizedBox(height: 8),
         Row(
           children: [
-            Icon(Icons.straighten, size: 16, color: colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.straighten,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 4),
             Text(
               distanceText,
-              style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -345,7 +344,11 @@ class _ActionButtons extends StatelessWidget {
         Expanded(
           child: ElevatedButton.icon(
             onPressed: onNavigate,
-            icon: Icon(Icons.navigation, color: colorScheme.onPrimary, size: 20),
+            icon: Icon(
+              Icons.navigation,
+              color: colorScheme.onPrimary,
+              size: 20,
+            ),
             label: Text(
               '開始導航',
               style: TextStyle(
@@ -357,7 +360,9 @@ class _ActionButtons extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: colorScheme.primary,
               padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -367,7 +372,9 @@ class _ActionButtons extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
             side: BorderSide(color: colorScheme.primary, width: 2),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
           child: Text(
             '詳情',

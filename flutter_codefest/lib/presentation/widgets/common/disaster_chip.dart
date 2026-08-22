@@ -12,7 +12,10 @@ class DisasterChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Chip(
       avatar: Icon(icon, size: 18, color: colorScheme.onPrimary),
-      label: Text(label, style: TextStyle(color: colorScheme.onPrimary, fontSize: 12)),
+      label: Text(
+        label,
+        style: TextStyle(color: colorScheme.onPrimary, fontSize: 12),
+      ),
       backgroundColor: colorScheme.primary,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );

@@ -73,17 +73,20 @@ void main() {
       expect(result, [near, far]);
     });
 
-    test('shelters without a coordinate sort after located ones, not dropped', () {
-      final located = fakeShelter(id: 1, flood: 'Y', lat: 25.0, lng: 121.5);
-      final unlocated = fakeShelter(id: 2, flood: 'Y', lat: null, lng: null);
-      final result = applyShelterFilters(
-        [unlocated, located],
-        disasterTypes: {'flood'},
-        spaceTypes: {},
-        lat: 25.0,
-        lon: 121.5,
-      );
-      expect(result, [located, unlocated]);
-    });
+    test(
+      'shelters without a coordinate sort after located ones, not dropped',
+      () {
+        final located = fakeShelter(id: 1, flood: 'Y', lat: 25.0, lng: 121.5);
+        final unlocated = fakeShelter(id: 2, flood: 'Y', lat: null, lng: null);
+        final result = applyShelterFilters(
+          [unlocated, located],
+          disasterTypes: {'flood'},
+          spaceTypes: {},
+          lat: 25.0,
+          lon: 121.5,
+        );
+        expect(result, [located, unlocated]);
+      },
+    );
   });
 }

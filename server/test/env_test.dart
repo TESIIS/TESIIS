@@ -70,7 +70,9 @@ void main() {
     });
 
     test('upstream base URL can be overridden', () {
-      Env.loadFromLines(['UPSTREAM_BASE_URL=https://proxy.example.com/dataset']);
+      Env.loadFromLines([
+        'UPSTREAM_BASE_URL=https://proxy.example.com/dataset',
+      ]);
       expect(Env.baseUrl, 'https://proxy.example.com/dataset');
     });
   });

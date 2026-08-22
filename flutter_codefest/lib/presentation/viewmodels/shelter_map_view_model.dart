@@ -12,8 +12,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 typedef FetchAllShelters = Future<List<Shelter>> Function();
-typedef FetchFilteredShelters =
-    Future<List<Shelter>> Function({String? q});
+typedef FetchFilteredShelters = Future<List<Shelter>> Function({String? q});
 typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
 typedef RequestPermission = Future<LocationPermission> Function();
@@ -34,8 +33,7 @@ Future<Position> _defaultGetCurrentPosition() =>
 class ShelterMapViewModel extends ChangeNotifier {
   ShelterMapViewModel({
     FetchAllShelters fetchAllShelters = repo.fetchAllShelters,
-    FetchFilteredShelters fetchFilteredShelters =
-        _defaultFetchFilteredShelters,
+    FetchFilteredShelters fetchFilteredShelters = _defaultFetchFilteredShelters,
     IsLocationServiceEnabled isLocationServiceEnabled =
         Geolocator.isLocationServiceEnabled,
     CheckPermission checkPermission = Geolocator.checkPermission,

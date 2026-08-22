@@ -67,7 +67,11 @@ Marker _currentLocationMarker(LatLng point) => Marker(
   height: 48,
   child: Semantics(
     label: '我的位置',
-    child: SvgPicture.asset('assets/icons/now_location.svg', width: 48, height: 48),
+    child: SvgPicture.asset(
+      'assets/icons/now_location.svg',
+      width: 48,
+      height: 48,
+    ),
   ),
 );
 

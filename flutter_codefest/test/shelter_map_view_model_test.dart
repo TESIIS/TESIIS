@@ -103,9 +103,7 @@ void main() {
 
     test('closing search clears the query and results', () async {
       final match = fakeShelter(id: 1, name: '螢橋國中');
-      final vm = _viewModel(
-        search: ({q}) async => [match],
-      );
+      final vm = _viewModel(search: ({q}) async => [match]);
       vm.toggleSearching();
       await vm.search('螢橋');
       expect(vm.searchResults, [match]);
@@ -135,9 +133,7 @@ void main() {
     });
 
     test('propagates a fetch failure to the caller', () async {
-      final vm = _viewModel(
-        search: ({q}) async => throw Exception('offline'),
-      );
+      final vm = _viewModel(search: ({q}) async => throw Exception('offline'));
 
       expect(vm.search('螢橋'), throwsException);
     });

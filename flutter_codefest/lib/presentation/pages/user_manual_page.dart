@@ -149,7 +149,11 @@ class UserManualPage extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  Icon(Icons.help_outline, color: colorScheme.primary, size: 40),
+                  Icon(
+                    Icons.help_outline,
+                    color: colorScheme.primary,
+                    size: 40,
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     '需要協助?',
@@ -163,7 +167,10 @@ class UserManualPage extends StatelessWidget {
                   Text(
                     '如有任何問題或建議,歡迎聯絡我們',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),

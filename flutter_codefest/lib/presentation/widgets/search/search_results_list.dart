@@ -169,7 +169,9 @@ class _ShelterResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final accent = isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant;
+    final accent = isSelected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
 
     return ListTile(
       dense: true,

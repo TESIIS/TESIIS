@@ -21,9 +21,7 @@ class StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = Theme.of(
-      context,
-    ).extension<AppStatusColors>()!.of(tone);
+    final palette = Theme.of(context).extension<AppStatusColors>()!.of(tone);
 
     return Container(
       margin: margin,
