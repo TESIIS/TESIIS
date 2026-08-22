@@ -99,6 +99,13 @@ Future<void> main(List<String> args) async {
 
   // SIGTERM matters as much as SIGINT: it is what container runtimes and
   // process supervisors send, and ignoring it means being killed mid-write.
+  //
+  // Windows has no real SIGTERM — watching for it throws a SignalException
+  // that would otherwise crash the whole server on startup. Container
+  // deployments (see compose.yaml) run on Linux regardless of the host OS,
+  // so skipping it on Windows costs nothing there.
   ProcessSignal.sigint.watch().listen(shutdown);
-  ProcessSignal.sigterm.watch().listen(shutdown);
+  if (!Platform.isWindows) {
+    ProcessSignal.sigterm.watch().listen(shutdown);
+  }
 }
