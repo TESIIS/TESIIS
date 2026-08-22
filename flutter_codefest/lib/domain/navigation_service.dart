@@ -13,7 +13,7 @@ Uri buildNavigationUri(Shelter shelter, {Position? from}) {
         ? Uri.parse(
             'https://www.google.com/maps/dir/?api=1'
             '&origin=${from.latitude},${from.longitude}'
-            '&destination=$destination&travelmode=driving',
+            '&destination=$destination&travelmode=walking',
           )
         : Uri.parse(
             'https://www.google.com/maps/search/?api=1&query=$destination',

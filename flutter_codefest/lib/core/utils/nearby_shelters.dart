@@ -20,6 +20,21 @@ double _deg2rad(double deg) => deg * pi / 180;
 double distanceToShelter(Shelter shelter, double lat, double lon) =>
     calculateDistance(lat, lon, shelter.latitude!, shelter.longitude!);
 
+const _walkingSpeedMetersPerSecond = 1.4;
+
+/// A rough walking-time estimate from straight-line distance. Not real
+/// routing — no path-following, no road network — so it undercounts actual
+/// walking time on non-direct routes.
+Duration estimateWalkingDuration(double meters) =>
+    Duration(seconds: (meters / _walkingSpeedMetersPerSecond).round());
+
+/// e.g. "約 12 分鐘（步行，直線距離估算）". Always at least 1 minute so the
+/// label never reads as instantaneous.
+String formatWalkingTime(double meters) {
+  final minutes = (estimateWalkingDuration(meters).inSeconds / 60).ceil();
+  return '約 ${minutes < 1 ? 1 : minutes} 分鐘（步行，直線距離估算）';
+}
+
 /// Shelters that can actually be placed on a map.
 ///
 /// About 8% of the dataset (31 of 401) has no coordinate. Those are still

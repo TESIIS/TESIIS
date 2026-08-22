@@ -85,4 +85,25 @@ void main() {
       expect(nearestShelters(shelters, originLat, originLng).length, 1);
     });
   });
+
+  group('estimateWalkingDuration', () {
+    test('divides distance by average walking speed', () {
+      expect(estimateWalkingDuration(1400).inSeconds, 1000);
+    });
+
+    test('zero distance is zero duration', () {
+      expect(estimateWalkingDuration(0).inSeconds, 0);
+    });
+  });
+
+  group('formatWalkingTime', () {
+    test('rounds up to whole minutes', () {
+      // 1400 m / 1.4 m/s = 1000 s = 16 min 40 s -> ceil to 17 min.
+      expect(formatWalkingTime(1400), '約 17 分鐘（步行，直線距離估算）');
+    });
+
+    test('never reads as less than 1 minute', () {
+      expect(formatWalkingTime(0), '約 1 分鐘（步行，直線距離估算）');
+    });
+  });
 }

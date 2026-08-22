@@ -38,6 +38,17 @@ class NearbyShelterPanel extends StatelessWidget {
     return '距離 ${(meters / 1000).toStringAsFixed(2)} 公里';
   }
 
+  String? get _walkingTimeText {
+    if (!nearest.hasCoordinate) return null;
+    return formatWalkingTime(
+      distanceToShelter(
+        nearest,
+        currentPosition.latitude,
+        currentPosition.longitude,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return wide ? _buildWideCard(context) : _buildMobileBand(context);
@@ -85,6 +96,7 @@ class NearbyShelterPanel extends StatelessWidget {
                 _InfoBlock(
                   nearest: nearest,
                   distanceText: _distanceText,
+                  walkingTimeText: _walkingTimeText,
                   colorScheme: colorScheme,
                 ),
                 const SizedBox(height: 12),
@@ -169,6 +181,7 @@ class NearbyShelterPanel extends StatelessWidget {
                 _InfoBlock(
                   nearest: nearest,
                   distanceText: _distanceText,
+                  walkingTimeText: _walkingTimeText,
                   colorScheme: colorScheme,
                 ),
                 const SizedBox(height: 12),
@@ -239,11 +252,13 @@ class _InfoBlock extends StatelessWidget {
   const _InfoBlock({
     required this.nearest,
     required this.distanceText,
+    required this.walkingTimeText,
     required this.colorScheme,
   });
 
   final Shelter nearest;
   final String distanceText;
+  final String? walkingTimeText;
   final ColorScheme colorScheme;
 
   @override
@@ -302,6 +317,26 @@ class _InfoBlock extends StatelessWidget {
             ),
           ],
         ),
+        if (walkingTimeText != null) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(
+                Icons.directions_walk,
+                size: 16,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                walkingTimeText!,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 8),
         Wrap(
           spacing: 6,

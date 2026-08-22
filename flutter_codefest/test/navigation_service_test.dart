@@ -13,7 +13,7 @@ void main() {
 
       expect(uri.toString(), contains('origin=25.0,121.5'));
       expect(uri.toString(), contains('destination=25.02,121.51'));
-      expect(uri.toString(), contains('travelmode=driving'));
+      expect(uri.toString(), contains('travelmode=walking'));
     });
 
     test('falls back to a plain search when there is no current position', () {

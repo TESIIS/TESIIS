@@ -177,6 +177,30 @@ class ShelterDetailSheet extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              Icons.directions_walk,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              formatWalkingTime(
+                distanceToShelter(
+                  shelter,
+                  position.latitude,
+                  position.longitude,
+                ),
+              ),
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 16),
       ],
 
