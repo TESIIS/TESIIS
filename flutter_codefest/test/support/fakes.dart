@@ -1,4 +1,5 @@
 import 'package:flutter_codefest/data/models/shelter.dart';
+import 'package:geolocator/geolocator.dart';
 
 Shelter fakeShelter({
   required int id,
@@ -49,4 +50,17 @@ Shelter fakeShelter({
   longitude: lng,
   coordinateSource: coordinateSource,
   coordinateConfidence: coordinateConfidence,
+);
+
+Position fakePosition({required double lat, required double lng}) => Position(
+  latitude: lat,
+  longitude: lng,
+  timestamp: DateTime.utc(2025, 11, 28),
+  accuracy: 5,
+  altitude: 0,
+  altitudeAccuracy: 0,
+  heading: 0,
+  headingAccuracy: 0,
+  speed: 0,
+  speedAccuracy: 0,
 );
