@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/map/basemap.dart';
 import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
+import 'package:flutter_codefest/data/datasources/shelter_cache.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/data/repositories/shelters_repository.dart'
     as repo;
@@ -17,6 +18,8 @@ typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
 typedef RequestPermission = Future<LocationPermission> Function();
 typedef GetCurrentPosition = Future<Position> Function();
+typedef CacheShelters = Future<void> Function(List<Shelter> shelters);
+typedef LoadCachedShelters = Future<CachedShelters?> Function();
 
 Future<List<Shelter>> _defaultFetchFilteredShelters({String? q}) =>
     repo.fetchFilteredShelters(q: q);
@@ -39,12 +42,16 @@ class ShelterMapViewModel extends ChangeNotifier {
     CheckPermission checkPermission = Geolocator.checkPermission,
     RequestPermission requestPermission = Geolocator.requestPermission,
     GetCurrentPosition getCurrentPosition = _defaultGetCurrentPosition,
+    CacheShelters cacheShelters = ShelterCache.save,
+    LoadCachedShelters loadCachedShelters = ShelterCache.load,
   }) : _fetchAllShelters = fetchAllShelters,
        _fetchFilteredShelters = fetchFilteredShelters,
        _isLocationServiceEnabled = isLocationServiceEnabled,
        _checkPermission = checkPermission,
        _requestPermission = requestPermission,
-       _getCurrentPosition = getCurrentPosition;
+       _getCurrentPosition = getCurrentPosition,
+       _cacheShelters = cacheShelters,
+       _loadCachedShelters = loadCachedShelters;
 
   final FetchAllShelters _fetchAllShelters;
   final FetchFilteredShelters _fetchFilteredShelters;
@@ -52,6 +59,8 @@ class ShelterMapViewModel extends ChangeNotifier {
   final CheckPermission _checkPermission;
   final RequestPermission _requestPermission;
   final GetCurrentPosition _getCurrentPosition;
+  final CacheShelters _cacheShelters;
+  final LoadCachedShelters _loadCachedShelters;
 
   Timer? _messageDismissTimer;
 
@@ -77,6 +86,9 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool _showOutOfRangeWarning = false;
   String? _locationMessage;
   bool _isLocationSuccess = true;
+
+  bool _isShowingCachedData = false;
+  DateTime? _cachedAt;
 
   // ---------------------------------------------------------------------
   // Read-only state
@@ -117,6 +129,8 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool get showOutOfRangeWarning => _showOutOfRangeWarning;
   String? get locationMessage => _locationMessage;
   bool get isLocationSuccess => _isLocationSuccess;
+  bool get isShowingCachedData => _isShowingCachedData;
+  DateTime? get cachedAt => _cachedAt;
 
   // ---------------------------------------------------------------------
   // Loading
@@ -125,8 +139,19 @@ class ShelterMapViewModel extends ChangeNotifier {
   Future<void> loadShelters() async {
     try {
       _shelters = await _fetchAllShelters();
+      _isShowingCachedData = false;
+      _cachedAt = null;
       updateVisibleShelters(currentLatLng ?? MapConstants.taipeiCenter);
+      unawaited(_cacheShelters(_shelters));
     } catch (_) {
+      final cached = await _loadCachedShelters();
+      if (cached != null && cached.shelters.isNotEmpty) {
+        _shelters = cached.shelters;
+        _isShowingCachedData = true;
+        _cachedAt = cached.cachedAt;
+        updateVisibleShelters(currentLatLng ?? MapConstants.taipeiCenter);
+        return;
+      }
       _locationMessage = '無法連線到伺服器,請確認後端已啟動';
       _isLocationSuccess = false;
       notifyListeners();

@@ -1,7 +1,9 @@
+import 'package:flutter_codefest/data/datasources/shelter_cache.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/presentation/viewmodels/shelter_map_view_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fakes.dart';
 
@@ -16,6 +18,13 @@ ShelterMapViewModel _viewModel({
 );
 
 void main() {
+  // loadShelters() persists to ShelterCache by default (real
+  // SharedPreferences calls), so every test needs the mock in-memory store —
+  // not just the ones that assert on caching behaviour.
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   group('loadShelters', () {
     test('populates shelters and computes the visible set', () async {
       final near = fakeShelter(id: 1, lat: 25.0375, lng: 121.5651);
@@ -32,12 +41,74 @@ void main() {
       final vm = ShelterMapViewModel(
         fetchAllShelters: () async => throw Exception('network down'),
         isLocationServiceEnabled: () async => false,
+        loadCachedShelters: () async => null,
       );
 
       await vm.loadShelters();
 
       expect(vm.isLocationSuccess, isFalse);
       expect(vm.locationMessage, contains('無法連線到伺服器'));
+      expect(vm.isShowingCachedData, isFalse);
+    });
+
+    test('caches shelters after a successful fetch', () async {
+      final shelter = fakeShelter(id: 1, lat: 25.0375, lng: 121.5651);
+      List<Shelter>? saved;
+      final vm = ShelterMapViewModel(
+        fetchAllShelters: () async => [shelter],
+        isLocationServiceEnabled: () async => false,
+        cacheShelters: (shelters) async => saved = shelters,
+      );
+
+      await vm.loadShelters();
+
+      expect(saved, [shelter]);
+    });
+
+    test('falls back to cached data when the fetch fails', () async {
+      final cached = fakeShelter(id: 9, lat: 25.0375, lng: 121.5651);
+      final cachedAt = DateTime.utc(2026, 1, 1);
+      final vm = ShelterMapViewModel(
+        fetchAllShelters: () async => throw Exception('network down'),
+        isLocationServiceEnabled: () async => false,
+        loadCachedShelters: () async =>
+            CachedShelters(shelters: [cached], cachedAt: cachedAt),
+      );
+
+      await vm.loadShelters();
+
+      expect(vm.shelters, [cached]);
+      expect(vm.isShowingCachedData, isTrue);
+      expect(vm.cachedAt, cachedAt);
+      // Falling back to a cache is not the error path: no scary banner.
+      expect(vm.locationMessage, isNull);
+    });
+
+    test('a later successful load clears the cached-data flag', () async {
+      final stale = fakeShelter(id: 9, lat: 25.0375, lng: 121.5651);
+      final fresh = fakeShelter(id: 1, lat: 25.0375, lng: 121.5651);
+      var useFresh = false;
+      final vm = ShelterMapViewModel(
+        fetchAllShelters: () async {
+          if (useFresh) return [fresh];
+          throw Exception('network down');
+        },
+        isLocationServiceEnabled: () async => false,
+        loadCachedShelters: () async => CachedShelters(
+          shelters: [stale],
+          cachedAt: DateTime.utc(2026, 1, 1),
+        ),
+        cacheShelters: (_) async {},
+      );
+      await vm.loadShelters();
+      expect(vm.isShowingCachedData, isTrue);
+
+      useFresh = true;
+      await vm.loadShelters();
+
+      expect(vm.isShowingCachedData, isFalse);
+      expect(vm.cachedAt, isNull);
+      expect(vm.shelters, [fresh]);
     });
   });
 

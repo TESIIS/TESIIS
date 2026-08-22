@@ -275,6 +275,18 @@ class _MapPageState extends State<MapPage> {
               ),
 
               _animatedSlot(
+                vm.isShowingCachedData
+                    ? StatusBanner(
+                        tone: StatusTone.info,
+                        icon: Icons.cloud_off,
+                        message:
+                            '顯示上次快取資料'
+                            '${vm.cachedAt != null ? '（更新於 ${_formatCachedAt(vm.cachedAt!)}）' : ''}',
+                      )
+                    : null,
+              ),
+
+              _animatedSlot(
                 vm.showOutOfRangeWarning
                     ? const StatusBanner(
                         tone: StatusTone.warning,
@@ -381,6 +393,12 @@ class _MapPageState extends State<MapPage> {
   /// Only used for plain block-flow children inside the `Column` above; see
   /// the comment further down for why the detail sheet and nearby panel
   /// can't use this.
+  static String _formatCachedAt(DateTime cachedAt) {
+    final local = cachedAt.toLocal();
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.month}/${local.day} ${local.hour}:$minute';
+  }
+
   static Widget _animatedSlot(Widget? child) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
