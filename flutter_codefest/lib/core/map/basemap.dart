@@ -21,7 +21,6 @@ import 'package:flutter_map/flutter_map.dart';
 /// regardless of what you ask for.
 enum Basemap {
   emap(label: '通用電子地圖', icon: Icons.map_outlined, layer: 'EMAP'),
-  emapDark(label: '暗色地圖', icon: Icons.dark_mode_outlined, layer: 'EMAP6'),
   photo(label: '正射影像', icon: Icons.satellite_alt_outlined, layer: 'PHOTO2');
 
   const Basemap({required this.label, required this.icon, required this.layer});

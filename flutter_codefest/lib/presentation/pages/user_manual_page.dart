@@ -5,22 +5,28 @@ class UserManualPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           '使用手冊',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: colorScheme.onPrimary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        backgroundColor: const Color(0xFF5AB4C5),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: colorScheme.primary,
+        iconTheme: IconThemeData(color: colorScheme.onPrimary),
         elevation: 0,
       ),
       body: Container(
-        color: Colors.grey[50],
+        color: colorScheme.surfaceContainerLowest,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             _buildSection(
+              context,
               icon: Icons.search,
               title: '1. 搜尋避難所',
               content: [
@@ -32,6 +38,7 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.filter_alt,
               title: '2. 分類篩選',
               content: [
@@ -44,6 +51,7 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.my_location,
               title: '3. 定位功能',
               content: [
@@ -56,17 +64,20 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.location_on,
               title: '4. 地圖標記',
               content: [
-                '• 紅色標記:一般避難所',
-                '• 黃色標記:目前選中的避難所',
+                '• 紅色標記:目前選中的避難所',
+                '• 綠色標記:座標精確的避難所',
+                '• 黃色標記:座標為概略值的避難所',
                 '• 點擊標記可查看避難所詳細資訊',
                 '• 藍色圓圈:1.5 公里搜尋範圍',
               ],
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.info,
               title: '5. 避難所詳情',
               content: [
@@ -79,6 +90,7 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.navigation,
               title: '6. 導航功能',
               content: [
@@ -90,6 +102,7 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.home,
               title: '7. 常駐資訊面板',
               content: [
@@ -102,6 +115,7 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.tips_and_updates,
               title: '8. 使用技巧',
               content: [
@@ -114,6 +128,7 @@ class UserManualPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildSection(
+              context,
               icon: Icons.warning_amber,
               title: '9. 注意事項',
               content: [
@@ -128,31 +143,27 @@ class UserManualPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF5AB4C5).withValues(alpha: 0.1),
+                color: colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF5AB4C5), width: 1),
+                border: Border.all(color: colorScheme.primary, width: 1),
               ),
               child: Column(
                 children: [
-                  const Icon(
-                    Icons.help_outline,
-                    color: Color(0xFF5AB4C5),
-                    size: 40,
-                  ),
+                  Icon(Icons.help_outline, color: colorScheme.primary, size: 40),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     '需要協助?',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF5AB4C5),
+                      color: colorScheme.primary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '如有任何問題或建議,歡迎聯絡我們',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                    style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -163,14 +174,16 @@ class UserManualPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSection({
+  Widget _buildSection(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required List<String> content,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -183,58 +196,58 @@ class UserManualPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 標題區
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color(0xFF5AB4C5),
-              borderRadius: BorderRadius.only(
+            decoration: BoxDecoration(
+              color: colorScheme.primary,
+              borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(12),
                 topRight: Radius.circular(12),
               ),
             ),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white, size: 24),
+                Icon(icon, color: colorScheme.onPrimary, size: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: colorScheme.onPrimary,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          // 內容區
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: content.map((item) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item,
-                          style: TextStyle(
-                            fontSize: 15,
-                            height: 1.5,
-                            color: Colors.grey[800],
+              children: content
+                  .map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item,
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.5,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
         ],
