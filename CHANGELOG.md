@@ -17,6 +17,10 @@
 - 測試從零建立：server 96 個、Flutter 22 個。
 - CI（analyze／format／test／web build／gitleaks／禁止檔名檢查）與每週上游資料監看排程。
 - 開源治理：`LICENSE`（MIT）、`NOTICE.md`（資料授權與再散布標示要求）、`CONTRIBUTING.md`（含禁止提交清單）、`SECURITY.md`、`CODE_OF_CONDUCT.md`、issue／PR 範本、`.githooks/pre-commit` 機密掃描。
+- **前端離線快取。** 每次成功抓到避難所清單後存進 `shared_preferences`；API 連不上時改用上次快取的資料並標示「顯示上次快取資料」，不再直接空白。地圖圖磚快取不在範圍內。
+- 步行時間概估（直線距離 ÷ 1.4 m/s），顯示在避難所詳情與最近避難所面板；明確標示為概算而非真實路線。
+- `/shelters/stats` 的 `byRegion` 新增每個縣市／鄉鎮／村里的座標品質統計（`coordinateQuality`：`total`／`withCoordinates`／`missing`／`bySource`／`byConfidence`），供資料品質頁面使用。前端新增「座標資料品質」頁，依缺座標數排序列出各鄉鎮。
+- `e2e/`：Playwright 端對端煙霧測試（首頁載入、搜尋、開啟避難所詳情），對著 `docker compose up --build` 的完整站台跑；CI 新增對應 job。
 
 ### Changed
 
@@ -27,6 +31,7 @@
 - `Shelter.latitude/longitude` 從 `dynamic` 改為 `double?`，移除散落各處的防禦性型別轉換。
 - 前端災害條件送出值從 `'true'` 改為 `'Y'`，與 API 文件一致。
 - `/shelters` 與 `/shelters/stats` 統一取用同一份資料，不再一個抓 3000 筆、一個抓 2000 筆。
+- 導航連結的 `travelmode` 從 `driving` 改為 `walking`——這是避難步行導引，不是開車導航。
 
 ### Fixed
 

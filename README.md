@@ -201,6 +201,15 @@ curl 'localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&lim
   "bySource": { "nfa_point_file": 252, "taipei_airraid": 118, "none": 31 } }
 ```
 
+`coordinateCoverage` 是整個資料集的彙總。`byRegion` 的每一層（縣市／鄉鎮／村里）
+另外各自帶一份同形狀的 `coordinateQuality`，讓資料品質頁面可以標出座標缺漏
+集中在哪個行政區，而不只是知道全域缺了幾筆：
+
+```json
+{ "total": 3, "withCoordinates": 2, "missing": 1,
+  "bySource": { "nfa_point_file": 2 }, "byConfidence": { "exact": 2 } }
+```
+
 ---
 
 ## 設定
@@ -241,15 +250,34 @@ Docker production build 使用 `API_BASE_URL=/api`，由同源反向代理連到
 # 後端
 cd server
 dart analyze        # 0 issues
-dart test           # 96 passed
+dart test           # 102 passed
 
 # 前端
 cd flutter_codefest
 flutter analyze     # 0 issues
-flutter test        # 22 passed
+flutter test        # 60 passed
 ```
 
-CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）在每個 PR 跑 analyze、format、test、web build，以及 gitleaks 機密掃描。另有每週排程的 [upstream-data-check](.github/workflows/upstream-data-check.yml) 監看上游資料 schema 與覆蓋率變化。
+### 端對端測試
+
+`e2e/` 是獨立的 Playwright + TypeScript 專案，對著 `docker compose up --build`
+起來的完整站台（Nginx + API + Flutter Web）跑幾個煙霧測試：首頁載入、搜尋、
+開啟避難所詳情。不是對 mock 資料跑，而是實際打站台。
+
+```bash
+docker compose up -d --build
+cd e2e
+npm ci
+npx playwright install --with-deps chromium
+npx playwright test
+docker compose down
+```
+
+Flutter Web 在啟用無障礙樹之前沒有可查詢的 DOM，測試會先點擊 Flutter 注入的
+「Enable accessibility」按鈕（見 `e2e/tests/smoke.spec.ts` 的
+`enableSemantics`），之後才能用文字定位元素。
+
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）在每個 PR 跑 analyze、format、test、web build、e2e，以及 gitleaks 機密掃描。另有每週排程的 [upstream-data-check](.github/workflows/upstream-data-check.yml) 監看上游資料 schema 與覆蓋率變化。
 
 貢獻前請讀 [CONTRIBUTING.md](CONTRIBUTING.md)，特別是**禁止提交清單**與安裝 pre-commit hook：
 
