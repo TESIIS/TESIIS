@@ -65,6 +65,57 @@ jobs:
       - run: docker compose config
       - run: docker compose build
 
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    needs: [containers]
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      # Runs against the real stack, not a mock: Nginx + API + Flutter Web,
+      # same as `docker compose up --build` in the README.
+      - name: Start the stack
+        working-directory: .
+        run: docker compose up -d --build
+
+      - name: Wait for /healthz
+        run: |
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/healthz; then exit 0; fi
+            sleep 2
+          done
+          echo "::error::Stack did not become healthy in time"
+          exit 1
+
+      - run: npx playwright test
+
+      - name: Dump container logs on failure
+        if: failure()
+        working-directory: .
+        run: docker compose logs
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        working-directory: .
+        run: docker compose down -v
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest

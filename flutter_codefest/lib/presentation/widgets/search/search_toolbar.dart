@@ -115,6 +115,7 @@ class SearchToolbar extends StatelessWidget {
             ),
           ),
           IconButton(
+            tooltip: isSearching ? '關閉搜尋' : '搜尋',
             icon: AnimatedSwitcher(
               duration: _kToggleDuration,
               transitionBuilder: (child, animation) => RotationTransition(
@@ -138,6 +139,7 @@ class SearchToolbar extends StatelessWidget {
               alignment: Alignment.center,
               widthFactor: isSearching ? 0 : 1,
               child: IconButton(
+                tooltip: '定位到我的位置',
                 icon: isLoadingLocation
                     ? SizedBox(
                         width: 20,
