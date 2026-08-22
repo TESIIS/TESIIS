@@ -1,20 +1,6 @@
 import 'package:flutter/material.dart';
-
-import 'presentation/pages/home_page.dart';
+import 'package:flutter_codefest/app.dart';
 
 void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '臺北市避難設施資訊整合系統',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green[700]),
-      home: const Scaffold(body: MapScreen()),
-    );
-  }
+  runApp(const App());
 }
