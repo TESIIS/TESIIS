@@ -190,6 +190,19 @@ void main() {
       expect(coverage['total'], 2);
       expect(coverage['withCoordinates'], 1);
     });
+
+    test('reports coordinate quality per region', () async {
+      final res = await get(controllerFor(data), '/shelters/stats');
+      final byRegion = (res['body'] as Map)['byRegion'] as List;
+      final taipei = byRegion.first as Map;
+      final cityQuality = taipei['coordinateQuality'] as Map;
+      expect(cityQuality['total'], 2);
+      expect(cityQuality['withCoordinates'], 1);
+      expect(cityQuality['missing'], 1);
+
+      final township = (taipei['townships'] as List).first as Map;
+      expect(township['coordinateQuality'], isA<Map>());
+    });
   });
 
   group('GET /shelters/nearby', () {

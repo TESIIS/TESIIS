@@ -226,6 +226,76 @@ void main() {
       expect((items.single as Map)['座標x'], 121.5);
       expect((items.single as Map)['座標y'], 25.03);
     });
+
+    group('coordinateQuality', () {
+      final mixed = [
+        shelter(
+          id: 1,
+          township: '中正區',
+          village: '林興里',
+          serviceVillages: '林興里、板溪里',
+          x: 121.5,
+          y: 25.03,
+          coordinateSource: 'nfa_point_file',
+          coordinateConfidence: 'exact',
+        ),
+        shelter(
+          id: 2,
+          township: '中正區',
+          village: '黎明里',
+          x: 121.52,
+          y: 25.04,
+          coordinateSource: 'taipei_airraid',
+          coordinateConfidence: 'approx',
+        ),
+        // No coordinate at all — the "missing" case.
+        shelter(id: 3, township: '中正區', village: '黎明里'),
+        shelter(id: 4, township: '大同區', village: '國慶里'),
+      ];
+
+      test('city level aggregates across every shelter in the city', () {
+        final byRegion = service.computeStats(data: mixed)['byRegion'] as List;
+        final taipei = byRegion.first as Map<String, dynamic>;
+        final quality = taipei['coordinateQuality'] as Map<String, dynamic>;
+
+        expect(quality['total'], 4);
+        expect(quality['withCoordinates'], 2);
+        expect(quality['missing'], 2);
+        expect(quality['bySource'], {'nfa_point_file': 1, 'taipei_airraid': 1});
+        expect(quality['byConfidence'], {'exact': 1, 'approx': 1});
+      });
+
+      test('township level scopes to that township only', () {
+        final byRegion = service.computeStats(data: mixed)['byRegion'] as List;
+        final townships =
+            (byRegion.first as Map<String, dynamic>)['townships'] as List;
+        final zhongzheng =
+            townships.firstWhere((t) => (t as Map)['township'] == '中正區')
+                as Map<String, dynamic>;
+        final quality = zhongzheng['coordinateQuality'] as Map<String, dynamic>;
+
+        expect(quality['total'], 3);
+        expect(quality['withCoordinates'], 2);
+        expect(quality['missing'], 1);
+      });
+
+      test('village level counts a shelter once even if reached via 服務里別', () {
+        final byRegion = service.computeStats(data: mixed)['byRegion'] as List;
+        final townships =
+            (byRegion.first as Map<String, dynamic>)['townships'] as List;
+        final zhongzheng =
+            townships.firstWhere((t) => (t as Map)['township'] == '中正區')
+                as Map<String, dynamic>;
+        final villages = zhongzheng['villages'] as List;
+        final linxing =
+            villages.firstWhere((v) => (v as Map)['village'] == '林興里')
+                as Map<String, dynamic>;
+        final quality = linxing['coordinateQuality'] as Map<String, dynamic>;
+
+        expect(quality['total'], 1);
+        expect(quality['withCoordinates'], 1);
+      });
+    });
   });
 }
 

@@ -205,6 +205,31 @@ class ShelterService {
     '座標y': s.y,
   };
 
+  /// Coordinate coverage for one region-scoped slice of shelters, mirroring
+  /// the shape of the dataset-wide [CoordinateCoverage.toJson] but computed
+  /// per city/township/village so a data-quality view can find where the
+  /// gaps actually are, not just how many there are overall.
+  static Map<String, dynamic> _coordinateQuality(List<Shelter> shelters) {
+    var withCoordinates = 0;
+    final bySource = <String, int>{};
+    final byConfidence = <String, int>{};
+    for (final s in shelters) {
+      if (!s.hasCoordinate) continue;
+      withCoordinates++;
+      final source = s.coordinateSource ?? 'none';
+      bySource[source] = (bySource[source] ?? 0) + 1;
+      final confidence = s.coordinateConfidence ?? 'none';
+      byConfidence[confidence] = (byConfidence[confidence] ?? 0) + 1;
+    }
+    return {
+      'total': shelters.length,
+      'withCoordinates': withCoordinates,
+      'missing': shelters.length - withCoordinates,
+      'bySource': bySource,
+      'byConfidence': byConfidence,
+    };
+  }
+
   Map<String, dynamic> computeStats({
     required List<Shelter> data,
     String? city,
@@ -273,6 +298,9 @@ class ShelterService {
           {
             'village': e.key,
             'count': e.value.length,
+            'coordinateQuality': _coordinateQuality(
+              objects[e.key] ?? const <Shelter>[],
+            ),
             'shelters': [
               for (final s in objects[e.key] ?? const <Shelter>[])
                 _shelterSummary(s),
@@ -288,6 +316,7 @@ class ShelterService {
         towns.add({
           'township': t.key,
           'total': t.value.length,
+          'coordinateQuality': _coordinateQuality(t.value),
           'villages': villagesOf(t.value),
           'shelters': [for (final s in t.value) _shelterSummary(s)],
         });
@@ -296,6 +325,7 @@ class ShelterService {
       byRegion.add({
         'city': cityEntry.key,
         'total': cityEntry.value.length,
+        'coordinateQuality': _coordinateQuality(cityEntry.value),
         'townships': towns,
       });
     }
