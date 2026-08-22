@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/presentation/widgets/common/disaster_chip.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// The persistent bottom panel showing the single nearest shelter, plus the
-/// floating user-manual button above it. Shown whenever a fix is available
-/// and neither search nor the detail sheet is open.
+/// The nearest-shelter summary, plus the floating user-manual button.
+///
+/// Below [MapConstants.desktopBreakpoint] this renders as the mobile
+/// full-width bottom band; at or above it, as a fixed-width floating card
+/// so it doesn't stretch across a wide window.
 class NearbyShelterPanel extends StatelessWidget {
   const NearbyShelterPanel({
     super.key,
@@ -16,6 +19,7 @@ class NearbyShelterPanel extends StatelessWidget {
     required this.onNavigate,
     required this.onViewDetail,
     required this.onOpenManual,
+    this.wide = false,
   });
 
   final Shelter nearest;
@@ -23,6 +27,7 @@ class NearbyShelterPanel extends StatelessWidget {
   final VoidCallback onNavigate;
   final VoidCallback onViewDetail;
   final VoidCallback onOpenManual;
+  final bool wide;
 
   String get _distanceText {
     if (!nearest.hasCoordinate) return '尚無座標';
@@ -36,6 +41,72 @@ class NearbyShelterPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return wide ? _buildWideCard(context) : _buildMobileBand(context);
+  }
+
+  // ---------------------------------------------------------------------
+  // Desktop: a fixed-width floating card, bottom-left.
+  // ---------------------------------------------------------------------
+
+  Widget _buildWideCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Positioned(
+      left: 16,
+      bottom: 16,
+      width: MapConstants.desktopPanelWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _ManualButton(colorScheme: colorScheme, onTap: onOpenManual),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Header(colorScheme: colorScheme),
+                const SizedBox(height: 12),
+                _InfoBlock(
+                  nearest: nearest,
+                  distanceText: _distanceText,
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(height: 12),
+                _ActionButtons(
+                  colorScheme: colorScheme,
+                  onNavigate: onNavigate,
+                  onViewDetail: onViewDetail,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Mobile: the persistent full-width bottom band.
+  // ---------------------------------------------------------------------
+
+  Widget _buildMobileBand(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -45,23 +116,7 @@ class NearbyShelterPanel extends StatelessWidget {
           Positioned(
             right: 16,
             bottom: screenHeight * 0.6 + 16,
-            child: Material(
-              color: colorScheme.surface,
-              shape: const CircleBorder(),
-              elevation: 6,
-              child: InkWell(
-                onTap: onOpenManual,
-                customBorder: const CircleBorder(),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  child: Icon(
-                    Icons.menu_book,
-                    color: colorScheme.primary,
-                    size: 28,
-                  ),
-                ),
-              ),
-            ),
+            child: _ManualButton(colorScheme: colorScheme, onTap: onOpenManual),
           ),
 
           // 底部往上提升後，補一個背景避免透明露出地圖
@@ -107,24 +162,7 @@ class NearbyShelterPanel extends StatelessWidget {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.near_me,
-                          color: colorScheme.primary,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '最近的避難設施',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _Header(colorScheme: colorScheme),
                   ),
                   const SizedBox(height: 12),
                   Expanded(
@@ -133,161 +171,16 @@ class NearbyShelterPanel extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Scrolls instead of overflowing when a shelter has
-                          // enough hazard/space tags for the Wrap to run onto
-                          // a second line — there's no ceiling on how many of
-                          // the six tags can be 'Y' at once.
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    nearest.name,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.onSurface,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.location_on_outlined,
-                                        size: 16,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          nearest.address,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: colorScheme.onSurfaceVariant,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.straighten,
-                                        size: 16,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _distanceText,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: [
-                                      if (nearest.flood == 'Y')
-                                        const CompactChip(
-                                          label: '水災',
-                                          icon: Icons.water_drop,
-                                        ),
-                                      if (nearest.earthquake == 'Y')
-                                        const CompactChip(
-                                          label: '地震',
-                                          icon: Icons.warning,
-                                        ),
-                                      if (nearest.landslide == 'Y')
-                                        const CompactChip(
-                                          label: '土石流',
-                                          icon: Icons.landscape,
-                                        ),
-                                      if (nearest.tsunami == 'Y')
-                                        const CompactChip(
-                                          label: '海嘯',
-                                          icon: Icons.waves,
-                                        ),
-                                      if (nearest.indoor == 'Y')
-                                        const CompactChip(
-                                          label: '室內',
-                                          icon: Icons.home,
-                                        ),
-                                      if (nearest.outdoor == 'Y')
-                                        const CompactChip(
-                                          label: '室外',
-                                          icon: Icons.park,
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
+                          _InfoBlock(
+                            nearest: nearest,
+                            distanceText: _distanceText,
+                            colorScheme: colorScheme,
                           ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: onNavigate,
-                                  icon: Icon(
-                                    Icons.navigation,
-                                    color: colorScheme.onPrimary,
-                                    size: 20,
-                                  ),
-                                  label: Text(
-                                    '開始導航',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.onPrimary,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: colorScheme.primary,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              OutlinedButton(
-                                onPressed: onViewDetail,
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                    horizontal: 20,
-                                  ),
-                                  side: BorderSide(
-                                    color: colorScheme.primary,
-                                    width: 2,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: Text(
-                                  '詳情',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          const Spacer(),
+                          _ActionButtons(
+                            colorScheme: colorScheme,
+                            onNavigate: onNavigate,
+                            onViewDetail: onViewDetail,
                           ),
                           const SizedBox(height: 8),
                         ],
@@ -300,6 +193,192 @@ class NearbyShelterPanel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ManualButton extends StatelessWidget {
+  const _ManualButton({required this.colorScheme, required this.onTap});
+
+  final ColorScheme colorScheme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: colorScheme.surface,
+      shape: const CircleBorder(),
+      elevation: 6,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          child: Icon(Icons.menu_book, color: colorScheme.primary, size: 28),
+        ),
+      ),
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.colorScheme});
+
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.near_me, color: colorScheme.primary, size: 24),
+        const SizedBox(width: 8),
+        Text(
+          '最近的避難設施',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoBlock extends StatelessWidget {
+  const _InfoBlock({
+    required this.nearest,
+    required this.distanceText,
+    required this.colorScheme,
+  });
+
+  final Shelter nearest;
+  final String distanceText;
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          nearest.name,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: colorScheme.onSurface,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              Icons.location_on_outlined,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                nearest.address,
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(Icons.straighten, size: 16, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Text(
+              distanceText,
+              style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            if (nearest.flood == 'Y')
+              const CompactChip(label: '水災', icon: Icons.water_drop),
+            if (nearest.earthquake == 'Y')
+              const CompactChip(label: '地震', icon: Icons.warning),
+            if (nearest.landslide == 'Y')
+              const CompactChip(label: '土石流', icon: Icons.landscape),
+            if (nearest.tsunami == 'Y')
+              const CompactChip(label: '海嘯', icon: Icons.waves),
+            if (nearest.indoor == 'Y')
+              const CompactChip(label: '室內', icon: Icons.home),
+            if (nearest.outdoor == 'Y')
+              const CompactChip(label: '室外', icon: Icons.park),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ActionButtons extends StatelessWidget {
+  const _ActionButtons({
+    required this.colorScheme,
+    required this.onNavigate,
+    required this.onViewDetail,
+  });
+
+  final ColorScheme colorScheme;
+  final VoidCallback onNavigate;
+  final VoidCallback onViewDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: onNavigate,
+            icon: Icon(Icons.navigation, color: colorScheme.onPrimary, size: 20),
+            label: Text(
+              '開始導航',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onPrimary,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colorScheme.primary,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        OutlinedButton(
+          onPressed: onViewDetail,
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+            side: BorderSide(color: colorScheme.primary, width: 2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text(
+            '詳情',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.primary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

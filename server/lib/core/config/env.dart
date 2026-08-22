@@ -10,7 +10,7 @@ import 'dart:io';
 /// Call [load] once at startup before reading any getter. See `.env.example`
 /// for the supported keys.
 class Env {
-  static const baseUrl = "https://data.taipei/api/v1/dataset";
+  static const defaultBaseUrl = "https://data.taipei/api/v1/dataset";
 
   /// 臺北市可供避難收容處所一覽表 — 401 records, no coordinate columns.
   static const shelterDatasetId = '4c92dbd4-d259-495a-8390-52628119a4dd';
@@ -95,6 +95,10 @@ class Env {
   static bool get isLoaded => _loaded;
 
   static int get port => int.tryParse(_read('PORT') ?? '') ?? defaultPort;
+
+  /// data.taipei's own API, unless overridden — e.g. to route through a
+  /// proxy when the deployment's egress IP has trouble reaching it directly.
+  static String get baseUrl => _read('UPSTREAM_BASE_URL') ?? defaultBaseUrl;
 
   static String get coordinatesCsvPath =>
       _read('COORDINATES_CSV') ?? defaultCoordinatesCsvPath;

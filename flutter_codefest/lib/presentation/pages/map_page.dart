@@ -210,6 +210,9 @@ class _MapPageState extends State<MapPage> {
         ? vm.filteredShelters
         : vm.nearbyShelters;
 
+    final isWide =
+        MediaQuery.of(context).size.width >= MapConstants.desktopBreakpoint;
+
     return Stack(
       children: [
         Positioned.fill(
@@ -234,7 +237,8 @@ class _MapPageState extends State<MapPage> {
         Positioned(
           top: 16,
           left: 16,
-          right: 16,
+          right: isWide ? null : 16,
+          width: isWide ? MapConstants.desktopPanelWidth : null,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -267,16 +271,6 @@ class _MapPageState extends State<MapPage> {
                             ? Icons.check_circle_rounded
                             : Icons.error_rounded,
                         message: vm.locationMessage!,
-                      )
-                    : null,
-              ),
-
-              _animatedSlot(
-                MediaQuery.of(context).size.width > 600
-                    ? const StatusBanner(
-                        tone: StatusTone.info,
-                        icon: Icons.phone_android,
-                        message: '建議使用手機比例以獲得最佳體驗',
                       )
                     : null,
               ),
@@ -326,20 +320,32 @@ class _MapPageState extends State<MapPage> {
           ),
         ),
 
-        // Not wrapped in the AnimatedSwitcher below: both of these build a
-        // bare Positioned/Positioned.fill (DraggableScrollableSheet needs to
-        // sit directly in the Stack to self-position). AnimatedSwitcher's
-        // transitionBuilder interposes a FadeTransition RenderObject between
-        // the Stack and that Positioned, which is an invalid ParentDataWidget
-        // ancestry Flutter rejects outright — confirmed by
-        // test/_scratch_positioned_probe_test.dart before this was reverted.
+        // Not wrapped in the AnimatedSwitcher below: DraggableScrollableSheet
+        // (inside ShelterDetailSheet) needs to sit directly in the Stack, at
+        // most behind plain layout widgets like Align, to self-position.
+        // AnimatedSwitcher's transitionBuilder interposes a FadeTransition
+        // RenderObject that breaks it — confirmed by a throwaway widget test
+        // before this comment was written.
         if (vm.showShelterDetails && vm.selectedShelter != null)
-          ShelterDetailSheet(
-            shelter: vm.selectedShelter!,
-            currentPosition: vm.currentPosition,
-            onClose: vm.clearSelection,
-            onNavigate: () => _openNavigation(vm.selectedShelter!),
-          ),
+          isWide
+              ? Align(
+                  alignment: Alignment.bottomLeft,
+                  child: SizedBox(
+                    width: MapConstants.desktopPanelWidth,
+                    child: ShelterDetailSheet(
+                      shelter: vm.selectedShelter!,
+                      currentPosition: vm.currentPosition,
+                      onClose: vm.clearSelection,
+                      onNavigate: () => _openNavigation(vm.selectedShelter!),
+                    ),
+                  ),
+                )
+              : ShelterDetailSheet(
+                  shelter: vm.selectedShelter!,
+                  currentPosition: vm.currentPosition,
+                  onClose: vm.clearSelection,
+                  onNavigate: () => _openNavigation(vm.selectedShelter!),
+                ),
 
         if (showNearbyPanel)
           NearbyShelterPanel(
@@ -351,6 +357,7 @@ class _MapPageState extends State<MapPage> {
               context,
               MaterialPageRoute(builder: (context) => const UserManualPage()),
             ),
+            wide: isWide,
           ),
       ],
     );

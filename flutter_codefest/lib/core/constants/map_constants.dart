@@ -18,6 +18,15 @@ class MapConstants {
   static const double taipeiMinLng = 121.45;
   static const double taipeiMaxLng = 121.65;
 
+  /// Below this width the UI stays edge-to-edge, mobile-style. At or above
+  /// it, the floating panels cap their width instead of stretching across
+  /// the whole window.
+  static const double desktopBreakpoint = 700;
+
+  /// Fixed width for the search/detail/nearby panels once desktop layout
+  /// kicks in.
+  static const double desktopPanelWidth = 420;
+
   static bool isWithinTaipei(LatLng point) =>
       point.latitude >= taipeiMinLat &&
       point.latitude <= taipeiMaxLat &&

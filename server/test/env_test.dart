@@ -24,6 +24,10 @@ void main() {
       expect(Env.logLevel, Env.defaultLogLevel);
       expect(Env.logLevel, Env.logLevel.toLowerCase());
     });
+
+    test('upstream base URL', () {
+      expect(Env.baseUrl, Env.defaultBaseUrl);
+    });
   });
 
   group('.env parsing', () {
@@ -63,6 +67,11 @@ void main() {
     test('an empty value falls through to the default', () {
       Env.loadFromLines(['COORDINATES_CSV=']);
       expect(Env.coordinatesCsvPath, Env.defaultCoordinatesCsvPath);
+    });
+
+    test('upstream base URL can be overridden', () {
+      Env.loadFromLines(['UPSTREAM_BASE_URL=https://proxy.example.com/dataset']);
+      expect(Env.baseUrl, 'https://proxy.example.com/dataset');
     });
   });
 }
