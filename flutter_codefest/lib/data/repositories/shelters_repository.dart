@@ -85,3 +85,9 @@ Future<List<Shelter>> fetchNearbyShelters({
     ),
   );
 }
+
+/// Raw `GET /shelters/stats` body, including the per-region coordinate
+/// quality breakdown. Kept as a `Map` passthrough — see
+/// `RegionCoordinateStats.listFromStatsJson` for the model that shapes it.
+Future<Map<String, dynamic>> fetchShelterStats() async =>
+    (await ApiService.get('/shelters/stats')) as Map<String, dynamic>;

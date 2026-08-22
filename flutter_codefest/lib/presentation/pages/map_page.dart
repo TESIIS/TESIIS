@@ -6,6 +6,7 @@ import 'package:flutter_codefest/core/theme/app_status_colors.dart';
 import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/domain/navigation_service.dart';
+import 'package:flutter_codefest/presentation/pages/data_quality_page.dart';
 import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
 import 'package:flutter_codefest/presentation/viewmodels/shelter_map_view_model.dart';
 import 'package:flutter_codefest/presentation/widgets/map/basemap_switcher.dart';
@@ -232,6 +233,28 @@ class _MapPageState extends State<MapPage> {
           child: BasemapSwitcher(
             selected: vm.basemap,
             onSelected: vm.switchBasemap,
+          ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 316,
+          child: Material(
+            color: colorScheme.surface,
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: IconButton(
+              tooltip: '座標資料品質',
+              icon: Icon(
+                Icons.assessment_outlined,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DataQualityPage(),
+                ),
+              ),
+            ),
           ),
         ),
         Positioned(
