@@ -17,8 +17,8 @@ String _markerAsset(Shelter shelter, {required bool isSelected}) {
       : 'assets/icons/yellow-refuge.svg';
 }
 
-const double _markerBaseSize = 34.0;
-const double _markerSelectedSize = 46.0;
+const double _markerBaseSize = 44.0;
+const double _markerSelectedSize = 60.0;
 
 Marker _shelterMarker(
   Shelter shelter, {
@@ -63,14 +63,14 @@ Marker _shelterMarker(
 Marker _currentLocationMarker(LatLng point) => Marker(
   key: const ValueKey('current-location'),
   point: point,
-  width: 48,
-  height: 48,
+  width: 56,
+  height: 56,
   child: Semantics(
     label: '我的位置',
     child: SvgPicture.asset(
       'assets/icons/now_location.svg',
-      width: 48,
-      height: 48,
+      width: 56,
+      height: 56,
     ),
   ),
 );

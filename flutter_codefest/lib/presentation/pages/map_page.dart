@@ -320,32 +320,20 @@ class _MapPageState extends State<MapPage> {
           ),
         ),
 
-        // Not wrapped in the AnimatedSwitcher below: DraggableScrollableSheet
-        // (inside ShelterDetailSheet) needs to sit directly in the Stack, at
-        // most behind plain layout widgets like Align, to self-position.
-        // AnimatedSwitcher's transitionBuilder interposes a FadeTransition
-        // RenderObject that breaks it — confirmed by a throwaway widget test
-        // before this comment was written.
+        // Not wrapped in the AnimatedSwitcher below: both layouts of
+        // ShelterDetailSheet root themselves directly in a Positioned /
+        // DraggableScrollableSheet that needs to sit directly in the Stack
+        // to self-position. AnimatedSwitcher's transitionBuilder interposes
+        // a FadeTransition RenderObject that breaks that — confirmed by a
+        // throwaway widget test before this comment was written.
         if (vm.showShelterDetails && vm.selectedShelter != null)
-          isWide
-              ? Align(
-                  alignment: Alignment.bottomLeft,
-                  child: SizedBox(
-                    width: MapConstants.desktopPanelWidth,
-                    child: ShelterDetailSheet(
-                      shelter: vm.selectedShelter!,
-                      currentPosition: vm.currentPosition,
-                      onClose: vm.clearSelection,
-                      onNavigate: () => _openNavigation(vm.selectedShelter!),
-                    ),
-                  ),
-                )
-              : ShelterDetailSheet(
-                  shelter: vm.selectedShelter!,
-                  currentPosition: vm.currentPosition,
-                  onClose: vm.clearSelection,
-                  onNavigate: () => _openNavigation(vm.selectedShelter!),
-                ),
+          ShelterDetailSheet(
+            shelter: vm.selectedShelter!,
+            currentPosition: vm.currentPosition,
+            onClose: vm.clearSelection,
+            onNavigate: () => _openNavigation(vm.selectedShelter!),
+            wide: isWide,
+          ),
 
         if (showNearbyPanel)
           NearbyShelterPanel(
