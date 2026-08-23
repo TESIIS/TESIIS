@@ -32,22 +32,27 @@
 
 ### 沒有認證，也不該有
 
-Server 只做一件事：代理公開的政府開放資料並補上座標。**它不儲存任何使用者資料、不接受寫入、沒有資料庫、沒有 session。** 所有回應內容本來就是公開資料。
+Server 只做一件事：代理公開的政府開放資料。**它不儲存任何使用者資料、不接受寫入、沒有資料庫、沒有 session。** 所有回應內容本來就是公開資料。
 
 因此 API 本身沒有認證機制，這是刻意的。如果你要部署到公開網路，請自行考慮：
 
-- **速率限制**：server 對上游有 10 分鐘記憶體快取（`CACHE_TTL_SECONDS`），所以流量不會直接打到 data.taipei，但你的主機仍可能被打。建議在前面放反向代理處理 rate limit。
+- **速率限制**：server 對上游有 10 分鐘記憶體快取（`CACHE_TTL_SECONDS`），所以流量不會直接打到內政部消防署的點位檔來源，但你的主機仍可能被打。建議在前面放反向代理處理 rate limit。
 - **CORS**：目前用 `shelf_cors_headers` 預設值（允許所有來源）。公開部署前請縮小到你自己的網域。位置在 [`server/bin/server.dart`](server/bin/server.dart)。
 
 ### 已經移除的攻擊面
 
 先前版本有四個 `/api/debug/geocoding_*` 端點，會把 query 參數直接字串內插進 SQL（`PRAGMA table_info($table)`、`SELECT * FROM $table`），且沒有任何開關可以在正式環境關掉。這些端點連同整個 SQLite 相依已在改用 CSV 座標表時移除。
 
-如果你從舊版本升級，請確認 `/api/debug/*` 回 404。
+如果你從舊版本升級，請確認 `/api/debug/*` 回 404。現行程式碼中已無任何 `/debug` 路由。
 
 ### 錯誤訊息不外洩內部細節
 
-5xx 回應只給泛用訊息，詳細錯誤與 stack trace 寫進 `logs/server.log`。**`logs/` 已被 gitignore，且可能含使用者查詢內容與 IP，請當作敏感資料處理。**
+5xx 回應只給泛用訊息（`Internal server error. See server logs for details.`），詳細錯誤與 stack trace 只寫進 log。
+
+**server 不再寫檔案日誌**——`bin/server.dart` 把 log 全部導向 stdout／stderr（`WARNING` 以上走 stderr），由容器 runtime 收集。這代表：
+
+- 你的 log 收集端（`docker compose logs`、journald、任何 log 聚合服務）會拿到請求路徑與錯誤細節，**可能含使用者查詢內容與來源 IP，請當作敏感資料處理並設定保存期限。**
+- `.gitignore` 仍排除 `logs/`／`*.log`，防的是舊版殘留或你自己導向檔案的情況。
 
 ### 定位資料
 

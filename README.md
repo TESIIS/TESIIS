@@ -29,8 +29,8 @@
 需要 Docker Compose。
 
 ```bash
-git clone https://github.com/Twcat0503/2025Taipei-codefest-team30.git
-cd 2025Taipei-codefest-team30
+git clone https://github.com/TESIIS/TESIIS.git
+cd TESIIS
 docker compose up --build
 ```
 
@@ -97,7 +97,9 @@ Dart Shelf API
 
 ## 資料與座標品質
 
-主要資料來自內政部消防署「避難收容處所點位檔」，涵蓋全臺 22 縣市、約 5,900 筆設施。後端會以各縣市的地理範圍檢查座標，拒絕明顯落在錯誤縣市、海上或預設位置的資料。
+主要資料來自內政部消防署「避難收容處所點位檔」，涵蓋全臺 22 縣市。上游約 5,973 筆，通過座標品質閘門的 5,854 筆（98.0%）進入快照，其餘 119 筆因座標落在所屬縣市範圍之外被排除，清單留在 `server/data/shelters_rejected.csv`。閘門依據是各縣市各自的 bounding box，用來擋掉明顯標在錯誤縣市、海上或預設位置的資料。
+
+上游點位檔本身即帶 WGS84 經緯度，因此快照中每一筆的座標精度都是 `exact`；但座標指向的是地址定位，不保證是災時實際的開放入口。
 
 上游服務可用時，API 使用近期下載並快取的資料；若上游失敗或回傳筆數異常，會退回 `server/data/shelters_nationwide.csv` 的已驗證快照。因此即使外部資料來源暫時不可用，地圖仍可正常提供查詢。
 
@@ -143,26 +145,28 @@ curl 'http://localhost:8080/api/regions?city=臺北市'
 
 | 變數 | 預設值 | 用途 |
 | --- | --- | --- |
-| `PORT` | `8080` | API 連接埠 |
+| `PORT` | `8080` | API 連接埠（命令列位置參數優先） |
 | `SNAPSHOT_CSV` | `data/shelters_nationwide.csv` | 全國資料快照路徑 |
-| `CACHE_TTL_SECONDS` | `600` | 上游資料快取秒數 |
+| `MAX_SNAPSHOT_ITEMS` | `8000` | 單次上游抓取的筆數上限（防呆用，資料約 5,900 筆） |
+| `CACHE_TTL_SECONDS` | `600` | 上游資料快取秒數；`0` 代表不使用快取 |
 | `LOG_LEVEL` | `info` | `debug`、`info`、`warn` 或 `error` |
 | `NFA_POINT_FILE_URL` | 消防署官方網址 | 覆寫點位檔來源 |
+| `UPSTREAM_BASE_URL` | `https://data.taipei/api/v1/dataset` | 僅離線工具 `build_coordinates.dart` 使用；可指向 proxy |
 
-`.env` 不應提交到版本控制。若啟用選用的交通資料功能，`TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 只能留在伺服器環境中。
+`.env` 不應提交到版本控制。目前系統**不需要任何金鑰**：唯一會用到憑證的 TDX 交通資訊仍在規劃階段（見 [docs/nationwide-roadmap.md](docs/nationwide-roadmap.md) 的 Phase 4），程式中尚無 TDX client。日後若啟用，`TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 只能留在伺服器環境中，絕不進入 Flutter bundle 或版本控制。
 
 ## 測試與 CI
 
 ```bash
 # 後端
 cd server
-dart analyze
-dart test
+dart analyze                      # 應為 0 issues
+dart test                         # 應為 175 passed
 
 # 前端
 cd flutter_codefest
-flutter analyze
-flutter test
+flutter analyze                   # 應為 0 issues
+flutter test                      # 應為 68 passed
 ```
 
 GitHub Actions 會執行後端與 Flutter 的靜態分析、格式檢查、測試、Web 建置、Docker Compose 建置、Playwright 端對端測試，以及 Git 歷史的機密掃描。完整設定見 [ci.yml](.github/workflows/ci.yml)。
@@ -180,10 +184,15 @@ docker compose down
 
 ## 資料來源與授權
 
-- [避難收容處所點位檔](https://data.gov.tw/dataset/73242) - 內政部消防署
+執行期使用：
+
+- [避難收容處所點位檔](https://data.gov.tw/dataset/73242) - 內政部消防署（**全國主資料**）
+- [國土測繪圖資服務雲 WMTS](https://maps.nlsc.gov.tw/) - 內政部國土測繪中心（底圖）
+
+僅離線工具 `build_coordinates.dart` 使用（臺北市時期的座標管線，執行期已不載入）：
+
 - [臺北市可供避難收容處所一覽表](https://data.taipei/dataset/detail?id=aaf97773-3631-40e2-b3cc-da87bf2ce1d5) - 臺北市政府社會局
 - [北市警政 APP 防空避難設備位置](https://data.taipei/dataset/detail?id=83eecdf1-3bbb-40f9-9484-b55b700c37ef) - 臺北市政府警察局
-- [國土測繪圖資服務雲 WMTS](https://maps.nlsc.gov.tw/) - 內政部國土測繪中心
 
 程式碼採 [MIT License](LICENSE)。資料檔與外部服務另有使用條款，重製或再散布前請閱讀 [NOTICE.md](NOTICE.md)。地圖畫面中的國土測繪中心來源標示是其使用規範的一部分，請勿移除。
 

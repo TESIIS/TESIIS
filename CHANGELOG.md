@@ -14,7 +14,7 @@
 - 上游資料快取（`CACHE_TTL_SECONDS`，預設 10 分鐘），含上游失敗時的 stale-on-error 降級。
 - 底圖切換（通用電子地圖／暗色／正射影像），三種皆為 NLSC 免費圖層。
 - App 明確標示座標品質：無座標的設施仍會列出並提供「以地址開啟外部地圖」，`approx` 座標會顯示概略位置警語。
-- 測試從零建立：server 96 個、Flutter 22 個。
+- 測試從零建立。截至本次 Unreleased 累計為 server 175 個、Flutter 68 個，另有 Playwright 端對端 4 項。
 - CI（analyze／format／test／web build／gitleaks／禁止檔名檢查）與每週上游資料監看排程。
 - 開源治理：`LICENSE`（MIT）、`NOTICE.md`（資料授權與再散布標示要求）、`CONTRIBUTING.md`（含禁止提交清單）、`SECURITY.md`、`CODE_OF_CONDUCT.md`、issue／PR 範本、`.githooks/pre-commit` 機密掃描。
 - **前端離線快取。** 每次成功抓到避難所清單後存進 `shared_preferences`；API 連不上時改用上次快取的資料並標示「顯示上次快取資料」，不再直接空白。地圖圖磚快取不在範圍內。全國化後改為有界 LRU（見下文「離線快取改為有界 LRU」）。

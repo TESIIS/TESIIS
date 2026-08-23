@@ -5,18 +5,22 @@ body:
   - type: markdown
     attributes:
       value: |
-        本專案的座標**不是**上游資料集提供的——臺北市 OpenData 這個資料集完全沒有座標欄位。
-        每個點都是用門牌地址 join 其他政府資料集推得的，因此有已知誤差。詳見 [NOTICE.md](../blob/master/NOTICE.md)。
+        本專案的資料來自內政部消防署「[避難收容處所點位檔](https://data.gov.tw/dataset/73242)」，
+        全國 22 縣市共 5,854 筆通過驗證的設施。**名稱、地址、座標、容納人數、聯絡人等欄位本專案不修改。**
+        這類錯誤請直接向資料提供機關反映。
 
-        避難所的**名稱、地址、容納人數、聯絡人**等欄位直接來自臺北市 OpenData，
-        本專案不修改。這類錯誤請直接向 [臺北市資料大平臺](https://data.taipei/) 反映。
+        本專案會做的事只有一件：以各縣市地理範圍逐筆檢查座標，把落在錯誤縣市、
+        海上或預設位置的資料排除掉（目前 119 筆，見 `server/data/shelters_rejected.csv`）。
+        **設施在地圖上完全找不到，最可能就是被這道閘門擋掉了。**
+
+        授權與資料品質細節見 [NOTICE.md](../blob/master/NOTICE.md)。
 
   - type: input
     id: shelter-code
     attributes:
       label: 收容所編號
       description: 在避難所詳細資訊面板可以看到，或從 API 的 `收容所編號` 欄位取得。
-      placeholder: SA100-0002
+      placeholder: NFA-TPE-013f9700229ebca3
     validations:
       required: true
 
@@ -24,7 +28,15 @@ body:
     id: name
     attributes:
       label: 名稱
-      placeholder: 臺北市立螢橋國民中學
+      placeholder: 中正國小
+    validations:
+      required: true
+
+  - type: input
+    id: city
+    attributes:
+      label: 縣市與鄉鎮市區
+      placeholder: 臺北市 中山區
     validations:
       required: true
 
@@ -33,9 +45,10 @@ body:
     attributes:
       label: 問題類型
       options:
-        - 地圖上完全沒有這個設施（無座標）
-        - 位置標錯地方
-        - 位置大致對但偏移數十公尺（概略座標）
+        - 地圖上完全沒有這個設施
+        - 位置標到錯誤的縣市或海上
+        - 位置偏移（標記不在實際設施上）
+        - 欄位資訊有誤（容納人數、適用災害、室內外等）
         - 其他
     validations:
       required: true
@@ -54,4 +67,4 @@ body:
     attributes:
       label: App 顯示的座標提示
       description: 詳細資訊面板上方是否有橘色或黃色提示？請貼上內容。
-      placeholder: 此位置為概略值(依鄰近門牌推估)，實際入口可能相差數十公尺。
+      placeholder: 此位置為概略值(依鄰近門牌推估)，實際入口可能相差數百公尺。
