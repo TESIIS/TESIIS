@@ -12,6 +12,7 @@ import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
 import 'package:flutter_codefest/presentation/viewmodels/shelter_map_view_model.dart';
 import 'package:flutter_codefest/presentation/widgets/map/basemap_switcher.dart';
 import 'package:flutter_codefest/presentation/widgets/map/cluster_members_sheet.dart';
+import 'package:flutter_codefest/presentation/widgets/map/nationwide_stats_card.dart';
 import 'package:flutter_codefest/presentation/widgets/map/shelter_map_view.dart';
 import 'package:flutter_codefest/presentation/widgets/map/shelter_marker_layer.dart';
 import 'package:flutter_codefest/presentation/widgets/search/filter_chip_bar.dart';
@@ -334,6 +335,16 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
             onTap: _onMapTap,
           ),
         ),
+        // Desktop only: mobile has no room for this beside the map, and the
+        // sidebar's dock (below) claims the same corner once a shelter is
+        // selected.
+        if (isWide && !vm.showShelterDetails)
+          const Positioned(
+            top: 16,
+            right: 16,
+            width: 280,
+            child: NationwideStatsCard(),
+          ),
         Positioned(
           right: 16,
           bottom: 260,

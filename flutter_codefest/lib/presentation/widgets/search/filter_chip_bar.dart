@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_codefest/presentation/widgets/search/edge_fade_overlay.dart';
 
@@ -19,7 +20,7 @@ const _filterDefs = [
 
 /// Horizontally scrolling row of disaster/space-type filter chips, shown
 /// while searching.
-class FilterChipBar extends StatelessWidget {
+class FilterChipBar extends StatefulWidget {
   const FilterChipBar({
     super.key,
     required this.isSelected,
@@ -28,6 +29,37 @@ class FilterChipBar extends StatelessWidget {
 
   final bool Function(String filterType) isSelected;
   final ValueChanged<String> onToggle;
+
+  @override
+  State<FilterChipBar> createState() => _FilterChipBarState();
+}
+
+class _FilterChipBarState extends State<FilterChipBar> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// A `SingleChildScrollView` only ever accepts drag input for its own
+  /// axis — a mouse wheel (which reports a vertical delta regardless of
+  /// which way the list actually scrolls) is never translated to it
+  /// automatically. On desktop, where a wheel is the default pointer input,
+  /// that reads as "the bar doesn't scroll at all". This reroutes the wheel's
+  /// vertical delta onto the horizontal offset by hand.
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final target = (position.pixels + event.scrollDelta.dy).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target != position.pixels) {
+      _scrollController.jumpTo(target);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,21 +86,28 @@ class FilterChipBar extends StatelessWidget {
       child: IntrinsicHeight(
         child: Stack(
           children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  for (var i = 0; i < _filterDefs.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 8),
-                    _FilterChipButton(
-                      label: _filterDefs[i].label,
-                      icon: _filterDefs[i].icon,
-                      selected: isSelected(_filterDefs[i].type),
-                      onTap: () => onToggle(_filterDefs[i].type),
-                    ),
+            Listener(
+              onPointerSignal: _handlePointerSignal,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < _filterDefs.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      _FilterChipButton(
+                        label: _filterDefs[i].label,
+                        icon: _filterDefs[i].icon,
+                        selected: widget.isSelected(_filterDefs[i].type),
+                        onTap: () => widget.onToggle(_filterDefs[i].type),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             const EdgeFadeOverlay(side: FadeSide.left),
