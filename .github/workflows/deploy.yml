@@ -30,7 +30,7 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: 23.146.248.51
+          host: 23.146.248.176
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           # compose.override.yml on the host is untracked and stays put —
