@@ -1,5 +1,7 @@
 // lib/domain/services/shelter_service.dart
 
+import '../../core/geo/city_codes.dart';
+import '../../core/geo/taiwan_bounds.dart';
 import '../../data/datasources/local/coordinate_source.dart';
 import '../entities/shelter.dart';
 import '../entities/shelter_fields.dart';
@@ -18,6 +20,10 @@ class ShelterService {
   Future<List<Shelter>> fetchAllShelters() => repository.getAllShelters();
 
   CoordinateCoverage get coordinateCoverage => repository.coordinateCoverage;
+
+  ShelterDataFreshness get dataFreshness => repository.dataFreshness;
+
+  DateTime? get dataUpdatedAt => repository.dataUpdatedAt;
 
   // ---------------------------------------------------------------------
   // Predicates
@@ -146,9 +152,16 @@ class ShelterService {
   // Filtering
   // ---------------------------------------------------------------------
 
-  /// Local filtering by region / type / keyword / hazards.
+  /// Local filtering by region / type / keyword / hazards / bbox.
   ///
   /// [matchMode] (`and` | `or`) applies to the hazard conditions only.
+  ///
+  /// [bbox], when given, is one more AND-ed predicate evaluated right here —
+  /// which is the whole point of putting it in `filterShelters` rather than
+  /// bolting it onto each endpoint separately: `/shelters`, `/shelters/stats`
+  /// and `/shelters/nearby` all call this, so they automatically agree on
+  /// what's "in view" instead of three separate implementations drifting
+  /// apart.
   List<Shelter> filterShelters({
     required List<Shelter> data,
     String? city,
@@ -159,6 +172,7 @@ class ShelterService {
     String? keyword,
     Map<String, String>? hazards, // keyed in Chinese: 水災/震災/…
     String matchMode = 'and',
+    GeoBox? bbox,
   }) {
     final hz = hazards ?? const <String, String>{};
     final mm = matchMode.toLowerCase() == 'or' ? 'or' : 'and';
@@ -184,6 +198,10 @@ class ShelterService {
               type.isNotEmpty &&
               !ShelterText.namesEqual(s.type, type)) {
             return false;
+          }
+          if (bbox != null) {
+            if (!s.hasCoordinate) return false;
+            if (!bbox.contains(s.x!, s.y!)) return false;
           }
           if (!_hazardsSatisfied(s, hz, mm)) return false;
           return _matchesKeywords(s, keywords);
@@ -240,6 +258,16 @@ class ShelterService {
     Map<String, String>? hazards,
     String? keyword,
     String matchMode = 'and',
+    GeoBox? bbox,
+    // Off by default. At Taipei's 401 records, an unfiltered response
+    // embedding every shelter's full detail at every city/township/village
+    // level was small enough not to matter. At ~5,850 nationwide records the
+    // same shape is multi-megabyte JSON with each shelter repeated 2-3
+    // times — the first endpoint the nationwide expansion would break.
+    // ?include=items,shelters opts back in for callers that want them (the
+    // data-quality page does not; it only reads coordinateQuality).
+    bool includeItems = false,
+    bool includeShelters = false,
   }) {
     // Reuse the exact predicate /shelters uses, so the two endpoints cannot
     // drift apart in what they consider a match.
@@ -253,6 +281,7 @@ class ShelterService {
       keyword: keyword,
       hazards: hazards,
       matchMode: matchMode,
+      bbox: bbox,
     );
 
     final typeCounts = <String, int>{};
@@ -301,10 +330,11 @@ class ShelterService {
             'coordinateQuality': _coordinateQuality(
               objects[e.key] ?? const <Shelter>[],
             ),
-            'shelters': [
-              for (final s in objects[e.key] ?? const <Shelter>[])
-                _shelterSummary(s),
-            ],
+            if (includeShelters)
+              'shelters': [
+                for (final s in objects[e.key] ?? const <Shelter>[])
+                  _shelterSummary(s),
+              ],
           },
       ];
     }
@@ -318,7 +348,8 @@ class ShelterService {
           'total': t.value.length,
           'coordinateQuality': _coordinateQuality(t.value),
           'villages': villagesOf(t.value),
-          'shelters': [for (final s in t.value) _shelterSummary(s)],
+          if (includeShelters)
+            'shelters': [for (final s in t.value) _shelterSummary(s)],
         });
       }
       towns.sort((a, b) => (b['total'] as int).compareTo(a['total'] as int));
@@ -339,23 +370,80 @@ class ShelterService {
       'total': filtered.length,
       'byType': byType,
       'byRegion': byRegion,
-      'items': [
-        for (final s in filtered)
-          {
-            '名稱': s.name,
-            '門牌地址': s.address,
-            '縣市': s.city,
-            '鄉鎮': s.township,
-            '村里': s.village,
-            '服務里別': ShelterText.splitVillages(s.serviceVillages),
-            '類型': s.type,
-            '震災': HazardFlag.normalizeForOutput(s.quake),
-            '土石流': HazardFlag.normalizeForOutput(s.landslide),
-            '海嘯': HazardFlag.normalizeForOutput(s.tsunami),
-            '座標x': s.x,
-            '座標y': s.y,
-          },
-      ],
+      if (includeItems)
+        'items': [
+          for (final s in filtered)
+            {
+              '名稱': s.name,
+              '門牌地址': s.address,
+              '縣市': s.city,
+              '鄉鎮': s.township,
+              '村里': s.village,
+              '服務里別': ShelterText.splitVillages(s.serviceVillages),
+              '類型': s.type,
+              '震災': HazardFlag.normalizeForOutput(s.quake),
+              '土石流': HazardFlag.normalizeForOutput(s.landslide),
+              '海嘯': HazardFlag.normalizeForOutput(s.tsunami),
+              '座標x': s.x,
+              '座標y': s.y,
+            },
+        ],
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Regions
+  // ---------------------------------------------------------------------
+
+  /// `GET /api/regions` — the 22 counties (or one county's townships, when
+  /// [city] is given), each with a shelter count and coordinate-quality
+  /// breakdown. Deliberately excludes `shelters`/`items`, same reasoning as
+  /// [computeStats]'s `includeShelters`/`includeItems`: this is meant to be
+  /// small enough to fetch on every app launch, not another multi-megabyte
+  /// endpoint.
+  Map<String, dynamic> computeRegions({
+    required List<Shelter> data,
+    String? city,
+  }) {
+    if (city != null && city.isNotEmpty) {
+      final filtered = filterShelters(data: data, city: city);
+      final byTownship = <String, List<Shelter>>{};
+      for (final s in filtered) {
+        byTownship.putIfAbsent(s.township, () => <Shelter>[]).add(s);
+      }
+      final townships = [
+        for (final entry in byTownship.entries)
+          {
+            'township': entry.key,
+            'count': entry.value.length,
+            'coordinateQuality': _coordinateQuality(entry.value),
+          },
+      ]..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+      return {'total': filtered.length, 'city': city, 'townships': townships};
+    }
+
+    // Keyed by normalised county name (臺→台 folded) so it lines up with
+    // TaiwanBounds.counties regardless of which spelling the data uses.
+    final byCounty = <String, List<Shelter>>{};
+    for (final s in data) {
+      byCounty
+          .putIfAbsent(ShelterText.normalizeName(s.city), () => <Shelter>[])
+          .add(s);
+    }
+
+    final regions = [
+      for (final county in TaiwanBounds.counties)
+        if (CityCodes.byNormalizedName(county) case final code?)
+          {
+            'cityCode': code.isoCode,
+            'city': code.displayName,
+            'count': (byCounty[county] ?? const []).length,
+            'coordinateQuality': _coordinateQuality(
+              byCounty[county] ?? const [],
+            ),
+          },
+    ]..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+
+    return {'total': data.length, 'regions': regions};
   }
 }

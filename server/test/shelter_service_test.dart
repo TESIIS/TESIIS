@@ -1,3 +1,4 @@
+import 'package:server/core/geo/taiwan_bounds.dart';
 import 'package:server/data/datasources/local/coordinate_source.dart';
 import 'package:server/domain/entities/shelter.dart';
 import 'package:server/domain/repositories/shelter_repository.dart';
@@ -194,7 +195,9 @@ void main() {
     test('a village reached twice is counted once', () {
       // Shelter 1 is in 林興里 and also serves 林興里. Counting the 村里 column
       // and the 服務里別 expansion separately double-counts it.
-      final byRegion = service.computeStats(data: data)['byRegion'] as List;
+      final byRegion =
+          service.computeStats(data: data, includeShelters: true)['byRegion']
+              as List;
       final taipei = byRegion.first as Map<String, dynamic>;
       final townships = taipei['townships'] as List;
       final zhongzheng =
@@ -222,9 +225,28 @@ void main() {
 
     test('items carry coordinates so a client can map them', () {
       final located = [shelter(id: 9, x: 121.5, y: 25.03)];
-      final items = service.computeStats(data: located)['items'] as List;
+      final items =
+          service.computeStats(data: located, includeItems: true)['items']
+              as List;
       expect((items.single as Map)['座標x'], 121.5);
       expect((items.single as Map)['座標y'], 25.03);
+    });
+
+    test('items and per-village/township shelters are omitted by default', () {
+      // ~5,850 nationwide records embedding full shelter detail at every
+      // city/township/village level would be multi-megabyte JSON with each
+      // shelter repeated 2-3 times — this must stay opt-in.
+      final stats = service.computeStats(data: data);
+      expect(stats.containsKey('items'), isFalse);
+
+      final byRegion = stats['byRegion'] as List;
+      final townships =
+          (byRegion.first as Map<String, dynamic>)['townships'] as List;
+      final firstTownship = townships.first as Map<String, dynamic>;
+      expect(firstTownship.containsKey('shelters'), isFalse);
+      final firstVillage =
+          (firstTownship['villages'] as List).first as Map<String, dynamic>;
+      expect(firstVillage.containsKey('shelters'), isFalse);
     });
 
     group('coordinateQuality', () {
@@ -295,6 +317,71 @@ void main() {
         expect(quality['total'], 1);
         expect(quality['withCoordinates'], 1);
       });
+    });
+  });
+
+  group('filterShelters — bbox', () {
+    test('keeps only shelters inside the box', () {
+      final inside = shelter(id: 1, x: 121.5, y: 25.03);
+      final outside = shelter(id: 2, x: 120.5, y: 22.6);
+      final box = const GeoBox(121.0, 122.0, 24.5, 25.5);
+      final out = service.filterShelters(data: [inside, outside], bbox: box);
+      expect(out.map((s) => s.id), [1]);
+    });
+
+    test('a shelter with no coordinate never matches a bbox query', () {
+      final noCoordinate = shelter(id: 1);
+      final box = const GeoBox(120.0, 122.0, 21.0, 26.0);
+      expect(service.filterShelters(data: [noCoordinate], bbox: box), isEmpty);
+    });
+  });
+
+  group('computeRegions', () {
+    final nationwide = [
+      shelter(id: 1, city: '臺北市', township: '中正區'),
+      shelter(id: 2, city: '臺北市', township: '大同區'),
+      shelter(id: 3, city: '高雄市', township: '苓雅區'),
+    ];
+
+    test('with no city, lists all 22 counties', () {
+      final regions =
+          service.computeRegions(data: nationwide)['regions'] as List;
+      expect(regions.length, 22);
+      final taipei =
+          regions.firstWhere((r) => (r as Map)['city'] == '臺北市') as Map;
+      expect(taipei['count'], 2);
+      expect(taipei['cityCode'], 'TPE');
+    });
+
+    test('a county with zero shelters still appears, with count 0', () {
+      final regions =
+          service.computeRegions(data: nationwide)['regions'] as List;
+      final penghu =
+          regions.firstWhere((r) => (r as Map)['city'] == '澎湖縣') as Map;
+      expect(penghu['count'], 0);
+    });
+
+    test('folds 臺/台 city-name variants together', () {
+      final mixedSpelling = [
+        shelter(id: 1, city: '臺北市'),
+        shelter(id: 2, city: '台北市'),
+      ];
+      final regions =
+          service.computeRegions(data: mixedSpelling)['regions'] as List;
+      final taipei =
+          regions.firstWhere((r) => (r as Map)['city'] == '臺北市') as Map;
+      expect(taipei['count'], 2);
+    });
+
+    test("with a city, lists that city's townships instead", () {
+      final result = service.computeRegions(data: nationwide, city: '臺北市');
+      expect(result['total'], 2);
+      final townships = result['townships'] as List;
+      expect(townships.length, 2);
+      expect(
+        townships.map((t) => (t as Map)['township']),
+        containsAll(['中正區', '大同區']),
+      );
     });
   });
 }

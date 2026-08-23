@@ -6,6 +6,8 @@ import 'package:logging/logging.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import '../../core/config/env.dart';
+import '../../core/geo/taiwan_bounds.dart' show GeoBox;
 import '../../domain/entities/shelter.dart';
 import '../../domain/entities/shelter_fields.dart';
 import '../../domain/services/shelter_service.dart';
@@ -25,6 +27,8 @@ class _ShelterQuery {
     required this.type,
     required this.hazards,
     required this.matchMode,
+    required this.bbox,
+    required this.bboxError,
   });
 
   final String? q;
@@ -35,6 +39,47 @@ class _ShelterQuery {
   final String? type;
   final Map<String, String> hazards;
   final String matchMode;
+
+  /// Parsed `?bbox=minLng,minLat,maxLng,maxLat`, or null if not given.
+  final GeoBox? bbox;
+
+  /// Set instead of [bbox] when the raw value fails validation, so the
+  /// handler can return a 400 with a useful message rather than silently
+  /// ignoring a malformed box.
+  final String? bboxError;
+
+  /// A box larger than this is rejected: the whole point of `bbox` is to let
+  /// a client ask for "what's on screen", not download the entire country in
+  /// one response. ~2° is generous enough for any real map viewport.
+  static const _maxBboxDegrees = 2.0;
+
+  static (GeoBox?, String?) _parseBbox(String? raw) {
+    if (raw == null || raw.isEmpty) return (null, null);
+    final parts = raw.split(',');
+    if (parts.length != 4) {
+      return (null, 'bbox must be "minLng,minLat,maxLng,maxLat"');
+    }
+    final values = parts.map((p) => double.tryParse(p.trim())).toList();
+    if (values.any((v) => v == null)) {
+      return (null, 'bbox must contain 4 numbers');
+    }
+    final minLng = values[0]!;
+    final minLat = values[1]!;
+    final maxLng = values[2]!;
+    final maxLat = values[3]!;
+    if (minLng >= maxLng || minLat >= maxLat) {
+      return (null, 'bbox min must be less than max on each axis');
+    }
+    if (maxLng - minLng > _maxBboxDegrees ||
+        maxLat - minLat > _maxBboxDegrees) {
+      return (
+        null,
+        'bbox must not exceed $_maxBboxDegrees° on either axis — '
+            'use GET /api/regions for a country-wide view',
+      );
+    }
+    return (GeoBox(minLng, maxLng, minLat, maxLat), null);
+  }
 
   /// Hazard parameters, accepted under both an English and a Chinese name.
   static const _hazardAliases = {
@@ -65,6 +110,8 @@ class _ShelterQuery {
       for (final value in rawVillages) ...ShelterText.splitVillages(value),
     ];
 
+    final (bbox, bboxError) = _parseBbox(params['bbox']);
+
     return _ShelterQuery(
       q: params['q'],
       city: params['city'] ?? params['縣市'],
@@ -76,6 +123,8 @@ class _ShelterQuery {
       matchMode: (params['match'] ?? 'and').toLowerCase() == 'or'
           ? 'or'
           : 'and',
+      bbox: bbox,
+      bboxError: bboxError,
     );
   }
 
@@ -88,6 +137,8 @@ class _ShelterQuery {
     if (type != null) 'type': type,
     if (hazards.isNotEmpty) 'hazards': hazards,
     'match': matchMode,
+    if (bbox != null)
+      'bbox': [bbox!.minLng, bbox!.minLat, bbox!.maxLng, bbox!.maxLat],
   };
 }
 
@@ -102,6 +153,7 @@ class ShelterController {
     r.get('/shelters', _getShelters);
     r.get('/shelters/stats', _getShelterStats);
     r.get('/shelters/nearby', _getNearbyShelters);
+    r.get('/regions', _getRegions);
     return r;
   }
 
@@ -141,7 +193,17 @@ class ShelterController {
         keyword: query.q,
         hazards: query.hazards.isEmpty ? null : query.hazards,
         matchMode: query.matchMode,
+        bbox: query.bbox,
       );
+
+  /// Metadata every list-shaped endpoint carries additively, so a client can
+  /// tell live data from a stale cache or the committed offline snapshot
+  /// without a separate `/healthz` round-trip.
+  Map<String, dynamic> _dataMeta() => {
+    'dataSource': 'nfa_point_file',
+    'dataFreshness': service.dataFreshness.name,
+    'dataUpdatedAt': service.dataUpdatedAt?.toIso8601String(),
+  };
 
   Map<String, dynamic> _toJson(Shelter e, {double? distanceMeters}) => {
     'id': e.id,
@@ -158,6 +220,9 @@ class ShelterController {
     '震災': HazardFlag.normalizeForOutput(e.quake),
     '土石流': HazardFlag.normalizeForOutput(e.landslide),
     '海嘯': HazardFlag.normalizeForOutput(e.tsunami),
+    // Only the nationwide NFA dataset carries this; always null for records
+    // built before the nationwide expansion.
+    '核子事故': HazardFlag.normalizeForOutput(e.nuclear),
     '救濟支站': HazardFlag.normalizeForOutput(e.relief),
     '無障礙設施': HazardFlag.normalizeForOutput(e.accessible),
     '室內': HazardFlag.normalizeForOutput(e.indoor),
@@ -182,9 +247,17 @@ class ShelterController {
   Future<Response> _getShelters(Request request) async {
     try {
       final query = _ShelterQuery.from(request);
+      if (query.bboxError != null) return _badRequest(query.bboxError!);
+
       final params = request.url.queryParameters;
       // limit/offset page the *filtered* result, not the upstream fetch.
-      final limit = int.tryParse(params['limit'] ?? '') ?? 1000;
+      //
+      // Default raised from 1000 to Env.maxSnapshotItems: at 401 Taipei-only
+      // records the old default never bit, but at ~5,850 nationwide records
+      // it silently truncated the response to under a fifth of the dataset
+      // with no error and no signal — the client had no way to know it
+      // didn't have everything. `truncated` makes that visible either way.
+      final limit = int.tryParse(params['limit'] ?? '') ?? Env.maxSnapshotItems;
       final offset = int.tryParse(params['offset'] ?? '') ?? 0;
       if (limit < 0 || offset < 0) {
         return _badRequest('limit and offset must not be negative');
@@ -195,8 +268,10 @@ class ShelterController {
 
       return _ok({
         'success': true,
+        ..._dataMeta(),
         'data': [for (final e in paged) _toJson(e)],
         'total': filtered.length,
+        'truncated': offset + limit < filtered.length,
       });
     } catch (e, s) {
       return _serverError('GET /shelters', e, s);
@@ -206,6 +281,15 @@ class ShelterController {
   Future<Response> _getShelterStats(Request request) async {
     try {
       final query = _ShelterQuery.from(request);
+      if (query.bboxError != null) return _badRequest(query.bboxError!);
+
+      // Off by default — see ShelterService.computeStats's doc comment.
+      // ?include=items,shelters opts back in.
+      final include = (request.url.queryParameters['include'] ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .toSet();
+
       final stats = service.computeStats(
         data: await service.fetchAllShelters(),
         city: query.city,
@@ -216,10 +300,14 @@ class ShelterController {
         hazards: query.hazards.isEmpty ? null : query.hazards,
         keyword: query.q,
         matchMode: query.matchMode,
+        bbox: query.bbox,
+        includeItems: include.contains('items'),
+        includeShelters: include.contains('shelters'),
       );
 
       return _ok({
         'success': true,
+        ..._dataMeta(),
         'filters': query.toJson(),
         // How much of the dataset can actually be plotted. Surfaced because the
         // upstream dataset has no coordinates at all, so this number is the
@@ -229,6 +317,23 @@ class ShelterController {
       });
     } catch (e, s) {
       return _serverError('GET /shelters/stats', e, s);
+    }
+  }
+
+  /// `GET /api/regions[?city=]` — the 22 counties, or one county's
+  /// townships. Small and cheap on purpose: no `shelters`/`items`, meant to
+  /// be fetched on every app launch for a county picker / low-zoom overview.
+  Future<Response> _getRegions(Request request) async {
+    try {
+      final params = request.url.queryParameters;
+      final city = params['city'] ?? params['縣市'];
+      final regions = service.computeRegions(
+        data: await service.fetchAllShelters(),
+        city: city,
+      );
+      return _ok({'success': true, ..._dataMeta(), ...regions});
+    } catch (e, s) {
+      return _serverError('GET /regions', e, s);
     }
   }
 
@@ -250,6 +355,7 @@ class ShelterController {
       if (limit < 0) return _badRequest('limit must not be negative');
 
       final query = _ShelterQuery.from(request);
+      if (query.bboxError != null) return _badRequest(query.bboxError!);
       final filtered = _applyFilters(await service.fetchAllShelters(), query);
 
       final withDistance = <(Shelter, double)>[];
@@ -263,6 +369,7 @@ class ShelterController {
 
       return _ok({
         'success': true,
+        ..._dataMeta(),
         'origin': {'lat': lat, 'lng': lng},
         if (radius != null) 'radius': radius,
         'data': [

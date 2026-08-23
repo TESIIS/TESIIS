@@ -273,4 +273,125 @@ void main() {
       expect(((res['body'] as Map)['data'] as List), isEmpty);
     });
   });
+
+  group('bbox', () {
+    final data = [
+      shelter(id: 1, name: '臺北', x: 121.5, y: 25.03),
+      shelter(id: 2, name: '高雄', x: 120.5, y: 22.6),
+    ];
+
+    test('/shelters keeps only shelters inside the box', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters?bbox=121.0,24.5,122.0,25.5',
+      );
+      final rows = ((res['body'] as Map)['data'] as List).cast<Map>();
+      expect(rows.map((r) => r['名稱']), ['臺北']);
+    });
+
+    test('is echoed back in filters', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/stats?bbox=121.0,24.5,122.0,25.5',
+      );
+      final filters = (res['body'] as Map)['filters'] as Map;
+      expect(filters['bbox'], [121.0, 24.5, 122.0, 25.5]);
+    });
+
+    test('malformed bbox is a 400, not a silent no-op', () async {
+      for (final query in [
+        '/shelters?bbox=1,2,3',
+        '/shelters?bbox=a,b,c,d',
+        '/shelters?bbox=122,24.5,121,25.5', // min > max
+      ]) {
+        final res = await get(controllerFor(data), query);
+        expect(res['status'], 400, reason: query);
+      }
+    });
+
+    test('a box wider than the limit is rejected', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters?bbox=118,20,123,27',
+      );
+      expect(res['status'], 400);
+    });
+  });
+
+  group('truncated', () {
+    final data = [shelter(id: 1), shelter(id: 2), shelter(id: 3)];
+
+    test('is false when everything fits', () async {
+      final res = await get(controllerFor(data), '/shelters');
+      expect((res['body'] as Map)['truncated'], isFalse);
+    });
+
+    test('is true when limit cuts off results', () async {
+      final res = await get(controllerFor(data), '/shelters?limit=1');
+      final body = res['body'] as Map;
+      expect(body['truncated'], isTrue);
+      expect((body['data'] as List).length, 1);
+      expect(body['total'], 3, reason: 'total is pre-limit');
+    });
+  });
+
+  group('?include= on /shelters/stats', () {
+    final data = [shelter(id: 1, x: 121.5, y: 25.03)];
+
+    test('items and shelters are omitted by default', () async {
+      final res = await get(controllerFor(data), '/shelters/stats');
+      final body = res['body'] as Map;
+      expect(body.containsKey('items'), isFalse);
+      final byRegion = body['byRegion'] as List;
+      final township =
+          ((byRegion.first as Map)['townships'] as List).first as Map;
+      expect(township.containsKey('shelters'), isFalse);
+    });
+
+    test('?include=items,shelters opts back in', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/stats?include=items,shelters',
+      );
+      final body = res['body'] as Map;
+      expect(body.containsKey('items'), isTrue);
+      final byRegion = body['byRegion'] as List;
+      final township =
+          ((byRegion.first as Map)['townships'] as List).first as Map;
+      expect(township.containsKey('shelters'), isTrue);
+    });
+  });
+
+  group('GET /regions', () {
+    final data = [
+      shelter(id: 1, city: '臺北市', township: '中正區'),
+      shelter(id: 2, city: '高雄市', township: '苓雅區'),
+    ];
+
+    test('lists all 22 counties with counts', () async {
+      final res = await get(controllerFor(data), '/regions');
+      final body = res['body'] as Map;
+      expect(body['success'], isTrue);
+      final regions = body['regions'] as List;
+      expect(regions.length, 22);
+    });
+
+    test('?city= scopes to that county\'s townships', () async {
+      final res = await get(controllerFor(data), '/regions?city=臺北市');
+      final body = res['body'] as Map;
+      expect(body['total'], 1);
+      final townships = body['townships'] as List;
+      expect((townships.first as Map)['township'], '中正區');
+    });
+
+    test(
+      'carries the same data-freshness metadata as the other endpoints',
+      () async {
+        final res = await get(controllerFor(data), '/regions');
+        final body = res['body'] as Map;
+        expect(body['dataSource'], 'nfa_point_file');
+        expect(body.containsKey('dataFreshness'), isTrue);
+      },
+    );
+  });
 }
