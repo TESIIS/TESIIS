@@ -1,98 +1,71 @@
 import '../../core/config/env.dart';
+import '../../core/errors/app_exception.dart';
 import '../../domain/entities/shelter.dart';
 import '../../domain/repositories/shelter_repository.dart';
-import '../datasources/external/shelter_api.dart';
-import '../datasources/local/coordinate_source.dart';
-import '../models/shelter_model.dart';
+import '../datasources/external/nfa_shelter_api.dart';
+import '../datasources/local/coordinate_source.dart' show CoordinateCoverage;
+import '../datasources/local/shelter_snapshot_source.dart';
+import '../mappers/nfa_shelter_mapper.dart';
 
-/// Fetches shelters from Taipei OpenData and joins in coordinates.
+/// Fetches shelters from the nationwide NFA point file.
 ///
-/// Two things happen here that the layers above rely on:
+/// Three things happen here that the layers above rely on:
 ///
-///  1. **Coordinates are attached.** The upstream dataset has none, so without
-///     this step every shelter would be unmappable.
-///  2. **Upstream responses are cached.** Before, every single request
-///     re-downloaded all 401 records from data.taipei. The dataset is
-///     republished a few times a year, so a short TTL costs nothing in
-///     freshness and removes an external round-trip from the hot path.
+///  1. **Upstream responses are cached** (TTL from `Env.cacheTtl`), so a burst
+///     of requests doesn't re-download ~6,000 records on every single one.
+///  2. **A failing upstream serves stale data instead of erroring**, with a
+///     backoff so an outage doesn't turn every request into a fresh retry
+///     storm — same reasoning as before the nationwide expansion.
+///  3. **A live fetch that looks implausible (too few rows, missing
+///     counties) is treated as a failure**, not adopted. This is new: it
+///     stops a truncated or restructured upstream response from silently
+///     blanking most of the map.
+///
+/// When there is no cache to fall back on at all (first request, upstream
+/// down), this now serves the committed [ShelterSnapshotSource] rather than
+/// throwing — a strictly stronger "stale beats nothing" guarantee than the
+/// Taipei-only version had, since there is always a floor to fall back to.
 class ShelterRepositoryImpl implements ShelterRepository {
   ShelterRepositoryImpl({
     required this.api,
-    required this.coordinates,
+    required this.snapshot,
     Duration? cacheTtl,
   }) : _cacheTtl = cacheTtl ?? Env.cacheTtl;
 
-  final ShelterApi api;
-  final CoordinateSource coordinates;
+  final NfaShelterApi api;
+  final ShelterSnapshotSource snapshot;
   final Duration _cacheTtl;
 
   List<Shelter>? _cached;
   DateTime? _cachedAt;
+  ShelterDataFreshness _freshness = ShelterDataFreshness.snapshot;
 
   /// De-duplicates concurrent misses so a burst of requests triggers one fetch.
   Future<List<Shelter>>? _inFlight;
 
   @override
-  CoordinateCoverage get coordinateCoverage => coordinates.coverage;
-
-  Shelter _buildEntityFromModel(ShelterModel m) {
-    var x = m.x;
-    var y = m.y;
-    String? source;
-    String? confidence;
-
-    // The dataset has never carried 座標x/座標y, but keep honouring them if
-    // upstream ever starts: a first-party coordinate beats a joined one.
-    if (x != null && y != null) {
-      source = 'upstream';
-      confidence = 'exact';
-    } else {
-      final hit = coordinates.lookup(
-        shelterCode: m.shelterCode,
-        address: m.address,
-        township: m.township,
-      );
-      if (hit != null) {
-        x = hit.lng;
-        y = hit.lat;
-        source = hit.source.wireName;
-        confidence = hit.confidence.wireName;
-      }
+  CoordinateCoverage get coordinateCoverage {
+    final cached = _cached;
+    final data = cached ?? snapshot.shelters;
+    if (data.isEmpty) return snapshot.coverage;
+    final withCoordinates = data.where((s) => s.hasCoordinate).length;
+    final bySource = <String, int>{};
+    for (final s in data) {
+      final key = s.coordinateSource ?? 'none';
+      bySource[key] = (bySource[key] ?? 0) + 1;
     }
-
-    return Shelter(
-      id: m.id,
-      importDate: m.importDate,
-      shelterCode: m.shelterCode,
-      name: m.name,
-      city: m.city,
-      zipcode: m.zipcode,
-      township: m.township,
-      village: m.village,
-      address: m.address,
-      type: m.type,
-      flood: m.flood,
-      quake: m.quake,
-      landslide: m.landslide,
-      tsunami: m.tsunami,
-      relief: m.relief,
-      accessible: m.accessible,
-      indoor: m.indoor,
-      outdoor: m.outdoor,
-      serviceVillages: m.serviceVillages,
-      capacity: m.capacity,
-      area: m.area,
-      contactName: m.contactName,
-      contactPhone: m.contactPhone,
-      managerName: m.managerName,
-      managerPhone: m.managerPhone,
-      notes: m.notes,
-      x: x,
-      y: y,
-      coordinateSource: source,
-      coordinateConfidence: confidence,
+    return CoordinateCoverage(
+      total: data.length,
+      withCoordinates: withCoordinates,
+      bySource: bySource,
     );
   }
+
+  @override
+  ShelterDataFreshness get dataFreshness => _freshness;
+
+  @override
+  DateTime? get dataUpdatedAt => _cachedAt ?? snapshot.snapshotUpdatedAt;
 
   bool get _isFresh {
     final at = _cachedAt;
@@ -136,25 +109,73 @@ class ShelterRepositoryImpl implements ShelterRepository {
     }
   }
 
+  /// Rejects a live fetch that is technically well-formed JSON/CSV but
+  /// obviously not the whole dataset: e.g. upstream started returning a
+  /// truncated or restructured file. Falling back to the snapshot in that
+  /// case beats silently serving a half-empty map.
+  ///
+  /// Compares against the committed snapshot's own row/county counts rather
+  /// than a hardcoded "22 counties" — that makes this testable with a small
+  /// fixture snapshot, and it's the more honest comparison anyway: what
+  /// matters is whether a live fetch looks worse than the floor already on
+  /// disk, not an assumption baked into this class about what the dataset
+  /// currently contains.
+  bool _looksImplausible(List<Shelter> liveShelters) {
+    final floorCount = snapshot.shelters.length;
+    if (floorCount > 0 && liveShelters.length < floorCount * 0.8) return true;
+
+    final snapshotCounties = snapshot.shelters
+        .map((s) => s.city.replaceAll('臺', '台'))
+        .toSet();
+    if (snapshotCounties.isEmpty) return false;
+    final liveCounties = liveShelters
+        .map((s) => s.city.replaceAll('臺', '台'))
+        .toSet();
+    return liveCounties.length < snapshotCounties.length * 0.8;
+  }
+
   Future<List<Shelter>> _fetchAll() async {
     try {
-      final models = await api.fetchAllShelters(maxItems: Env.maxUpstreamItems);
-      final shelters = models
-          .map(_buildEntityFromModel)
-          .toList(growable: false);
+      final rawRows = await api.fetchRawRows();
+      final ordinals = NfaShelterMapper.assignOrdinals(rawRows);
+      final fetchedAt = DateTime.now().toUtc();
+
+      final shelters = <Shelter>[];
+      for (var i = 0; i < rawRows.length; i++) {
+        final result = NfaShelterMapper.toShelter(
+          rawRows[i],
+          rowIndex: i,
+          ordinal: ordinals[i],
+          sourceUpdatedAt: fetchedAt,
+        );
+        if (result.shelter != null) shelters.add(result.shelter!);
+      }
+
+      if (_looksImplausible(shelters)) {
+        throw ServerException(
+          'Live NFA fetch failed the sanity check '
+          '(${shelters.length} shelters, expected roughly ${snapshot.shelters.length})',
+        );
+      }
+
       _cached = shelters;
-      _cachedAt = DateTime.now();
+      _cachedAt = fetchedAt;
       _retryNotBefore = null;
+      _freshness = ShelterDataFreshness.live;
       return shelters;
     } catch (_) {
       // Serve stale data rather than nothing: during a disaster a slightly old
       // shelter list is far more useful than an error page.
       final stale = _cached;
+      _retryNotBefore = DateTime.now().add(staleRetryBackoff);
       if (stale != null) {
-        _retryNotBefore = DateTime.now().add(staleRetryBackoff);
+        _freshness = ShelterDataFreshness.cached;
         return stale;
       }
-      rethrow;
+      // No stale in-memory copy at all — fall back to the committed
+      // snapshot rather than rethrowing.
+      _freshness = ShelterDataFreshness.snapshot;
+      return snapshot.shelters;
     }
   }
 }

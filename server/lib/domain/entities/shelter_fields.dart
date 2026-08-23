@@ -39,12 +39,25 @@ class HazardFlag {
   }
 
   /// Canonical value for API output: anything that means yes becomes 'Y',
-  /// everything else passes through untouched.
+  /// anything that means no becomes 'N', everything else (e.g. a genuinely
+  /// unset field) passes through untouched.
   ///
-  /// Must stay in sync with [isYes] — a value reported as 'Y' here that [isYes]
-  /// rejects would make the API contradict its own filters.
-  static String? normalizeForOutput(String? raw) =>
-      raw == null ? null : (isYes(raw) ? 'Y' : raw);
+  /// The NFA dataset's 是/否 made the no-side matter here for the first
+  /// time — Taipei OpenData's hazard columns were always literal 'N' already,
+  /// so `isNo(raw) -> 'N'` used to be a no-op. Without it, 否 leaked into API
+  /// responses unnormalised (`"室外":"否"` next to `"室內":"Y"`), which still
+  /// happened to read correctly through this API's own `== 'Y'` filters but
+  /// broke the "Y/N vocabulary" promise the wire format otherwise keeps.
+  ///
+  /// Must stay in sync with [isYes]/[isNo] — a value reported as 'Y' or 'N'
+  /// here that they disagree with would make the API contradict its own
+  /// filters.
+  static String? normalizeForOutput(String? raw) {
+    if (raw == null) return null;
+    if (isYes(raw)) return 'Y';
+    if (isNo(raw)) return 'N';
+    return raw;
+  }
 
   /// True when a query value asks specifically for an alias (`?quake=備用`)
   /// rather than for any usable shelter (`?quake=Y`).

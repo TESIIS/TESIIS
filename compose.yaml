@@ -6,7 +6,7 @@ services:
       context: ./server
     environment:
       PORT: "8080"
-      COORDINATES_CSV: data/shelter_coordinates.csv
+      SNAPSHOT_CSV: data/shelters_nationwide.csv
       CACHE_TTL_SECONDS: "600"
       LOG_LEVEL: info
     expose:

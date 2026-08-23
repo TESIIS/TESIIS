@@ -307,4 +307,10 @@ class _NullRepository implements ShelterRepository {
   @override
   CoordinateCoverage get coordinateCoverage =>
       const CoordinateCoverage(total: 0, withCoordinates: 0, bySource: {});
+
+  @override
+  ShelterDataFreshness get dataFreshness => ShelterDataFreshness.live;
+
+  @override
+  DateTime? get dataUpdatedAt => null;
 }

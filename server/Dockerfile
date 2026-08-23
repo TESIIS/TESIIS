@@ -21,10 +21,10 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=build --chown=nobody:nogroup /app/build/server ./server
-COPY --chown=nobody:nogroup data/shelter_coordinates.csv ./data/shelter_coordinates.csv
+COPY --chown=nobody:nogroup data/shelters_nationwide.csv ./data/shelters_nationwide.csv
 
 ENV PORT=8080 \
-    COORDINATES_CSV=data/shelter_coordinates.csv \
+    SNAPSHOT_CSV=data/shelters_nationwide.csv \
     CACHE_TTL_SECONDS=600 \
     LOG_LEVEL=info
 

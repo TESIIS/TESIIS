@@ -36,6 +36,12 @@ class _FakeRepository implements ShelterRepository {
     withCoordinates: shelters.where((s) => s.hasCoordinate).length,
     bySource: const {'manual': 1},
   );
+
+  @override
+  ShelterDataFreshness get dataFreshness => ShelterDataFreshness.live;
+
+  @override
+  DateTime? get dataUpdatedAt => DateTime.utc(2026, 8, 23);
 }
 
 Future<Map<String, dynamic>> get(

@@ -36,6 +36,23 @@ class Env {
   /// this is only a runaway guard.
   static const maxUpstreamItems = 3000;
 
+  /// 消防署避難收容處所點位檔 — the nationwide dataset (~5,973 records, all 22
+  /// counties), already carries 經度/緯度. Same URL `tool/build_coordinates.dart`
+  /// already fetches for its Taipei-only coordinate join.
+  static const defaultNfaPointFileUrl =
+      'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/'
+      'ED6CF735-6C03-4573-A882-72C1BEC799CB/resource/'
+      '54550E2F-4567-4C8F-BD2E-E54E9D0386B8/download';
+
+  /// The committed nationwide snapshot — the floor `ShelterRepositoryImpl`
+  /// falls back to when a live NFA fetch fails or looks implausible.
+  static const defaultSnapshotCsvPath = 'data/shelters_nationwide.csv';
+
+  /// Runaway guard for the nationwide fetch. The dataset holds ~5,973 rows;
+  /// the old 3,000 default (sized for Taipei's 401) would silently truncate
+  /// a nationwide response in half.
+  static const defaultMaxSnapshotItems = 8000;
+
   static Map<String, String> _fileValues = const {};
   static bool _loaded = false;
 
@@ -102,6 +119,16 @@ class Env {
 
   static String get coordinatesCsvPath =>
       _read('COORDINATES_CSV') ?? defaultCoordinatesCsvPath;
+
+  static String get nfaPointFileUrl =>
+      _read('NFA_POINT_FILE_URL') ?? defaultNfaPointFileUrl;
+
+  static String get snapshotCsvPath =>
+      _read('SNAPSHOT_CSV') ?? defaultSnapshotCsvPath;
+
+  static int get maxSnapshotItems =>
+      int.tryParse(_read('MAX_SNAPSHOT_ITEMS') ?? '') ??
+      defaultMaxSnapshotItems;
 
   /// Cache lifetime. `0` is a legitimate value meaning "never serve from
   /// cache"; negative values are clamped to it rather than silently producing

@@ -1,134 +1,151 @@
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:server/data/datasources/external/shelter_api.dart';
-import 'package:server/data/datasources/local/coordinate_source.dart';
+import 'package:server/data/datasources/external/nfa_shelter_api.dart';
+import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
 import 'package:server/data/repositories_impl/shelter_repository_impl.dart';
+import 'package:server/domain/repositories/shelter_repository.dart';
 import 'package:test/test.dart';
 
-const _coordinateCsv = '''
-shelter_code,name,address,lng,lat,source,confidence,updated_at
-SA100-0002,螢橋國中,汀州路三段四號,121.5265,25.0190,nfa_point_file,exact,2026-08-09
-SA100-0009,只有地址對得上,中正區公園路29號,121.5153,25.0363,taipei_airraid,exact,2026-08-09
-''';
+const _nfaCsvHeader =
+    '序號,縣市及鄉鎮市區,村里,避難收容處所地址,經度,緯度,避難收容處所名稱,'
+    '預計收容村里,預計收容人數,適用災害類別,管理人姓名,管理人電話,'
+    '室內,室外,適合避難弱者安置';
 
-Map<String, dynamic> _upstreamRecord({
-  required int id,
-  required String code,
+String _nfaRow({
+  int seq = 1,
+  String region = '臺北市中正區',
+  String village = '林興里',
   String address = '汀州路三段四號',
+  String lng = '121.5265',
+  String lat = '25.0190',
+  String name = '測試避難所',
+}) =>
+    '$seq,$region,$village,$address,$lng,$lat,$name,'
+    '林興里,100,水災,陳大文,02-11111111,是,否,是';
+
+String _nfaCsv(List<String> rows) => '$_nfaCsvHeader\n${rows.join('\n')}\n';
+
+/// Builds a snapshot CSV from column-name-keyed maps rather than a
+/// hand-aligned positional string — a single dropped field silently shifts
+/// every column after it (lat lands in the confidence slot, etc.) with no
+/// error, just a row that fails the coordinate gate and vanishes.
+String _snapshotCsv(List<Map<String, String>> rows) {
+  final header = shelterSnapshotCsvHeader;
+  final buffer = StringBuffer()..writeln(header.join(','));
+  for (final row in rows) {
+    buffer.writeln(header.map((h) => row[h] ?? '').join(','));
+  }
+  return buffer.toString();
+}
+
+Map<String, String> _snapshotRow({
+  required String sourceId,
+  required String cityCode,
+  required String city,
+  String township = '中正區',
+  String lng = '121.52',
+  String lat = '25.03',
 }) => {
-  '_id': id,
-  '_importdate': {'date': '2025-11-28 14:50:10.208313'},
-  '收容所編號': code,
-  '名稱': '測試避難所',
-  '縣市': '臺北市',
-  '郵遞區號': '100',
-  '鄉鎮': '中正區',
-  '村里': '林興里',
-  '門牌地址': address,
-  '類型': '學校',
-  '水災': 'Y',
-  '震災': '備用',
-  '土石流': 'N',
-  '海嘯': 'N',
-  '救濟支站': 'Y',
-  '無障礙設施': 'Y',
-  '室內': 'Y',
-  '室外': 'N',
-  '服務里別': '板溪里、網溪里',
-  '容納人數': '1,581',
-  '收容所面積（平方公尺）': '14,495',
-  '聯絡人姓名': '王小明',
-  '備考': '',
+  'source_id': sourceId,
+  'source': 'nfa_point_file',
+  'source_updated_at': '2026-08-01T00:00:00.000Z',
+  'city_code': cityCode,
+  'city': city,
+  'township': township,
+  'village': '林興里',
+  'name': '舊資料',
+  'address': '舊地址',
+  'lng': lng,
+  'lat': lat,
+  'coordinate_confidence': 'exact',
+  'capacity': '10',
+  'flood': 'N',
+  'quake': 'N',
+  'landslide': 'N',
+  'tsunami': 'N',
+  'nuclear': 'N',
+  'indoor': '是',
+  'outdoor': '否',
+  'accessible': '是',
 };
+
+/// A snapshot with two counties, small enough to hand-build in a test but
+/// enough for the sanity gate (§_looksImplausible) to have something to
+/// compare a live fetch against.
+final _snapshot = ShelterSnapshotSource.fromCsv(
+  _snapshotCsv([
+    _snapshotRow(sourceId: 'NFA-TPE-a', cityCode: 'TPE', city: '臺北市'),
+    _snapshotRow(
+      sourceId: 'NFA-KHH-b',
+      cityCode: 'KHH',
+      city: '高雄市',
+      township: '苓雅區',
+      lng: '120.5',
+      lat: '22.6',
+    ),
+  ]),
+);
 
 /// A stub upstream that counts how many times it was hit.
 class _Upstream {
-  _Upstream(this.records);
+  _Upstream(this.csvBody);
 
-  final List<Map<String, dynamic>> records;
+  final String? csvBody;
   int requests = 0;
   bool fail = false;
 
   http.Client get client => MockClient((request) async {
     requests++;
-    if (fail) return http.Response('upstream down', 503);
-    final offset = int.parse(request.url.queryParameters['offset'] ?? '0');
+    if (fail || csvBody == null) return http.Response('upstream down', 503);
+    // Without an explicit charset, package:http encodes `body` -> `bodyBytes`
+    // as latin-1, which mangles every Chinese field and makes
+    // NfaShelterApi's utf8.decode throw — the exact trap its own comment
+    // warns about for the real upstream.
     return http.Response(
-      jsonEncode({
-        'result': {'results': offset == 0 ? records : <Map<String, dynamic>>[]},
-      }),
+      csvBody!,
       200,
-      headers: {'content-type': 'application/json; charset=utf-8'},
+      headers: {'content-type': 'text/csv; charset=utf-8'},
     );
   });
 }
 
 void main() {
-  final coordinates = CoordinateSource.fromCsv(_coordinateCsv);
-
   ShelterRepositoryImpl repositoryFor(
     _Upstream upstream, {
     Duration ttl = const Duration(minutes: 10),
+    ShelterSnapshotSource? snapshot,
   }) => ShelterRepositoryImpl(
-    api: ShelterApi(client: upstream.client),
-    coordinates: coordinates,
+    api: NfaShelterApi(client: upstream.client),
+    snapshot: snapshot ?? ShelterSnapshotSource.empty(),
     cacheTtl: ttl,
   );
 
-  test('joins coordinates in by shelter code', () async {
-    final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+  test('maps a live NFA row into a Shelter', () async {
+    final upstream = _Upstream(_nfaCsv([_nfaRow()]));
     final shelters = await repositoryFor(upstream).getAllShelters();
 
     final s = shelters.single;
+    expect(s.city, '臺北市');
+    expect(s.township, '中正區');
     expect(s.x, 121.5265);
     expect(s.y, 25.0190);
     expect(s.coordinateSource, 'nfa_point_file');
-    expect(s.coordinateConfidence, 'exact');
     expect(s.hasCoordinate, isTrue);
   });
 
-  test('falls back to the address when the code is unknown', () async {
-    final upstream = _Upstream([
-      _upstreamRecord(id: 1, code: 'UNKNOWN', address: '公園路29號'),
-    ]);
-    final shelters = await repositoryFor(upstream).getAllShelters();
-    expect(shelters.single.coordinateSource, 'taipei_airraid');
-  });
-
-  test('a shelter with no coordinate is still returned', () async {
-    final upstream = _Upstream([
-      _upstreamRecord(id: 1, code: 'UNKNOWN', address: '沒有這條路999號'),
-    ]);
-    final shelters = await repositoryFor(upstream).getAllShelters();
-    expect(shelters.single.hasCoordinate, isFalse);
-    expect(shelters.single.coordinateSource, isNull);
-    expect(shelters.single.name, '測試避難所');
-  });
-
-  test('parses the messy numeric columns', () async {
-    final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
-    final s = (await repositoryFor(upstream).getAllShelters()).single;
-    expect(s.capacity, 1581, reason: 'thousands separator');
-    expect(s.area, 14495.0);
-  });
-
   test('caches upstream for the TTL', () async {
-    // Before this cache every single request re-downloaded the whole dataset.
-    final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+    final upstream = _Upstream(_nfaCsv([_nfaRow()]));
     final repository = repositoryFor(upstream);
 
     await repository.getAllShelters();
     await repository.getAllShelters();
     await repository.getAllShelters();
 
-    // One page fetch plus the terminating empty page.
-    expect(upstream.requests, lessThanOrEqualTo(2));
+    expect(upstream.requests, 1);
   });
 
   test('a zero TTL refetches', () async {
-    final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+    final upstream = _Upstream(_nfaCsv([_nfaRow()]));
     final repository = repositoryFor(upstream, ttl: Duration.zero);
 
     await repository.getAllShelters();
@@ -139,7 +156,7 @@ void main() {
   });
 
   test('concurrent misses trigger a single fetch', () async {
-    final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+    final upstream = _Upstream(_nfaCsv([_nfaRow()]));
     final repository = repositoryFor(upstream);
 
     await Future.wait([
@@ -148,12 +165,11 @@ void main() {
       repository.getAllShelters(),
     ]);
 
-    expect(upstream.requests, lessThanOrEqualTo(2));
+    expect(upstream.requests, 1);
   });
 
   test('serves stale data when upstream fails', () async {
-    // During a disaster a slightly old shelter list beats an error page.
-    final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+    final upstream = _Upstream(_nfaCsv([_nfaRow()]));
     final repository = repositoryFor(upstream, ttl: Duration.zero);
 
     final fresh = await repository.getAllShelters();
@@ -161,15 +177,13 @@ void main() {
     final stale = await repository.getAllShelters();
 
     expect(stale.single.shelterCode, fresh.single.shelterCode);
+    expect(repository.dataFreshness, ShelterDataFreshness.cached);
   });
 
   test(
     'backs off instead of retrying a failing upstream every request',
     () async {
-      // With a zero TTL and no backoff, an upstream outage turned every single
-      // request into a fresh attempt — latency for the caller and a retry storm
-      // aimed at a dependency that is already unwell.
-      final upstream = _Upstream([_upstreamRecord(id: 1, code: 'SA100-0002')]);
+      final upstream = _Upstream(_nfaCsv([_nfaRow()]));
       final repository = repositoryFor(upstream, ttl: Duration.zero);
 
       await repository.getAllShelters();
@@ -178,10 +192,7 @@ void main() {
       final afterFirstFailure = upstream.requests;
 
       for (var i = 0; i < 5; i++) {
-        expect(
-          (await repository.getAllShelters()).single.shelterCode,
-          'SA100-0002',
-        );
+        expect((await repository.getAllShelters()).single.city, '臺北市');
       }
 
       expect(
@@ -192,13 +203,117 @@ void main() {
     },
   );
 
-  test('a first-load failure propagates rather than serving nothing', () async {
-    final upstream = _Upstream([])..fail = true;
-    expect(() => repositoryFor(upstream).getAllShelters(), throwsA(anything));
+  group('snapshot fallback (new: stronger than the old rethrow)', () {
+    test(
+      'a first-load failure with no cache serves the snapshot, not an error',
+      () async {
+        final upstream = _Upstream(null)..fail = true;
+        final shelters = await repositoryFor(
+          upstream,
+          snapshot: _snapshot,
+        ).getAllShelters();
+
+        expect(shelters, hasLength(2));
+        expect(
+          shelters.map((s) => s.shelterCode),
+          containsAll(['NFA-TPE-a', 'NFA-KHH-b']),
+        );
+      },
+    );
+
+    test(
+      'freshness reports snapshot when falling back with nothing cached',
+      () async {
+        final upstream = _Upstream(null)..fail = true;
+        final repository = repositoryFor(upstream, snapshot: _snapshot);
+        await repository.getAllShelters();
+
+        expect(repository.dataFreshness, ShelterDataFreshness.snapshot);
+      },
+    );
+
+    test(
+      'an empty snapshot and a failing upstream yields an empty list, not a throw',
+      () async {
+        final upstream = _Upstream(null)..fail = true;
+        final shelters = await repositoryFor(upstream).getAllShelters();
+        expect(shelters, isEmpty);
+      },
+    );
   });
 
-  test('coverage is passed through to the service layer', () async {
-    final upstream = _Upstream([]);
-    expect(repositoryFor(upstream).coordinateCoverage.total, 2);
+  group(
+    'sanity gate — a live fetch that looks worse than the snapshot is rejected',
+    () {
+      test('too few rows compared to the snapshot falls back to it', () async {
+        // Snapshot has 2 rows; a "live" fetch of just 1 is well under the 80%
+        // floor and should be rejected in favour of the snapshot.
+        final upstream = _Upstream(_nfaCsv([_nfaRow()]));
+        final shelters = await repositoryFor(
+          upstream,
+          snapshot: _snapshot,
+        ).getAllShelters();
+
+        expect(shelters, hasLength(2));
+        expect(
+          shelters.map((s) => s.shelterCode),
+          containsAll(['NFA-TPE-a', 'NFA-KHH-b']),
+        );
+      });
+
+      test(
+        'too few counties compared to the snapshot falls back to it',
+        () async {
+          // Snapshot spans 2 counties (臺北市, 高雄市); a live fetch that only
+          // covers one — even with plenty of rows — should still be rejected.
+          final manyRowsOneCounty = List.generate(
+            5,
+            (i) => _nfaRow(seq: i, name: 'facility-$i', address: 'addr-$i'),
+          );
+          final upstream = _Upstream(_nfaCsv(manyRowsOneCounty));
+          final shelters = await repositoryFor(
+            upstream,
+            snapshot: _snapshot,
+          ).getAllShelters();
+
+          expect(
+            shelters.map((s) => s.shelterCode),
+            containsAll(['NFA-TPE-a', 'NFA-KHH-b']),
+          );
+        },
+      );
+
+      test('a plausible live fetch is adopted normally', () async {
+        final tpe = _nfaRow(seq: 1, region: '臺北市中正區');
+        final khh = _nfaRow(
+          seq: 2,
+          region: '高雄市苓雅區',
+          lng: '120.5',
+          lat: '22.6',
+          name: '高雄避難所',
+        );
+        final upstream = _Upstream(_nfaCsv([tpe, khh]));
+        final repository = repositoryFor(upstream, snapshot: _snapshot);
+
+        final shelters = await repository.getAllShelters();
+
+        expect(shelters, hasLength(2));
+        expect(repository.dataFreshness, ShelterDataFreshness.live);
+      });
+    },
+  );
+
+  test('coordinateCoverage reflects the currently-served list', () async {
+    final upstream = _Upstream(_nfaCsv([_nfaRow()]));
+    final repository = repositoryFor(upstream);
+    await repository.getAllShelters();
+
+    expect(repository.coordinateCoverage.total, 1);
+    expect(repository.coordinateCoverage.withCoordinates, 1);
+  });
+
+  test('coordinateCoverage falls back to the snapshot before any fetch', () {
+    final repository = repositoryFor(_Upstream(null), snapshot: _snapshot);
+    expect(repository.coordinateCoverage.total, 2);
   });
 }

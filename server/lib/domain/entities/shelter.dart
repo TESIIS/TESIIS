@@ -41,6 +41,24 @@ class Shelter {
   /// How much to trust the coordinate: exact / name_match / approx.
   final String? coordinateConfidence;
 
+  /// ISO 3166-2:TW subdivision code, e.g. 'TPE'. Null for records built
+  /// before the nationwide expansion. See `core/geo/city_codes.dart`.
+  final String? cityCode;
+
+  /// 核子事故 — a hazard type only the nationwide NFA dataset carries; no
+  /// Taipei OpenData record has ever had a value for it.
+  final String? nuclear;
+
+  /// Which pipeline produced this record: 'taipei_opendata' or
+  /// 'nfa_point_file'. Distinct from [coordinateSource], which is about the
+  /// coordinate specifically — a record can come from one source and have
+  /// its coordinate joined in from another.
+  final String? sourceName;
+
+  /// When the source snapshot/upstream fetch this record came from was
+  /// produced, if known.
+  final DateTime? sourceUpdatedAt;
+
   Shelter({
     required this.id,
     required this.importDate,
@@ -72,6 +90,10 @@ class Shelter {
     this.y,
     this.coordinateSource,
     this.coordinateConfidence,
+    this.cityCode,
+    this.nuclear,
+    this.sourceName,
+    this.sourceUpdatedAt,
   });
 
   bool get hasCoordinate => x != null && y != null;

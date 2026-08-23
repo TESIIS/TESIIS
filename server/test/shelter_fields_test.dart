@@ -48,6 +48,15 @@ void main() {
       expect(HazardFlag.normalizeForOutput('N'), 'N');
     });
 
+    test('normalizeForOutput also folds the no-side (是/否 from NFA)', () {
+      // Regression: 否 used to leak into API responses unnormalised, so a
+      // shelter could show "室內":"Y" next to "室外":"否" in the same
+      // response — Taipei OpenData's hazard columns were always literal 'N'
+      // already, so this path was never exercised until NFA's 是/否.
+      expect(HazardFlag.normalizeForOutput('是'), 'Y');
+      expect(HazardFlag.normalizeForOutput('否'), 'N');
+    });
+
     test('海嘯 is only reachable through the aliases', () {
       // 海嘯 is N(391) 備用(10) across all 401 records — there is no literal
       // 'Y'. Drop the alias handling and ?tsunami=Y silently returns zero.

@@ -9,7 +9,8 @@ import 'package:shelf_router/shelf_router.dart';
 
 import 'package:server/core/config/env.dart';
 import 'package:server/core/di/injection.dart' as di;
-import 'package:server/data/datasources/local/coordinate_source.dart';
+import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
+import 'package:server/domain/repositories/shelter_repository.dart';
 import 'package:server/presentation/controllers/shelter_controller.dart';
 
 /// Maps the LOG_LEVEL config value onto a `package:logging` level.
@@ -45,26 +46,32 @@ Future<void> main(List<String> args) async {
   logger.info('Starting server...');
 
   // Check the one precondition that cannot be recovered from before wiring
-  // anything up, so a missing coordinate table produces an explanation rather
-  // than a DI stack trace.
-  final CoordinateSource coordinates;
+  // anything up, so a missing snapshot produces an explanation rather than a
+  // DI stack trace.
+  final ShelterSnapshotSource snapshot;
   try {
-    coordinates = di.loadCoordinateSource();
-  } on di.CoordinateTableUnavailable catch (e) {
+    snapshot = di.loadShelterSnapshot();
+  } on di.SnapshotUnavailable catch (e) {
     stderr.writeln('\n$e\n');
     exit(1);
   }
 
-  di.setupDependencies(coordinates: coordinates);
+  di.setupDependencies(snapshot: snapshot);
   final shelterController = di.getIt<ShelterController>();
+  final shelterRepository = di.getIt<ShelterRepository>();
 
   final router = Router()
     ..get('/healthz', (Request _) {
       return Response.ok(
         jsonEncode({
           'status': 'ok',
-          'service': 'taipei-shelter-api',
-          'coordinateCoverage': coordinates.coverage.toJson(),
+          'service': 'taiwan-shelter-api',
+          'dataSource': 'nfa_point_file',
+          'dataFreshness': shelterRepository.dataFreshness.name,
+          'dataUpdatedAt': shelterRepository.dataUpdatedAt?.toIso8601String(),
+          'snapshotUpdatedAt': snapshot.snapshotUpdatedAt?.toIso8601String(),
+          'countsByCity': snapshot.countsByCity,
+          'coordinateCoverage': shelterRepository.coordinateCoverage.toJson(),
         }),
         headers: const {'content-type': 'application/json; charset=utf-8'},
       );
