@@ -3,11 +3,14 @@ import 'dart:io' show stderr;
 import 'package:get_it/get_it.dart';
 
 import '../../data/datasources/external/nfa_shelter_api.dart';
+import '../../data/datasources/external/tdx_client.dart';
 import '../../data/datasources/local/shelter_snapshot_source.dart';
 import '../../data/repositories_impl/shelter_repository_impl.dart';
 import '../../domain/repositories/shelter_repository.dart';
 import '../../domain/services/shelter_service.dart';
+import '../../domain/services/transit_service.dart';
 import '../../presentation/controllers/shelter_controller.dart';
+import '../../presentation/controllers/transit_controller.dart';
 import '../config/env.dart';
 
 final getIt = GetIt.instance;
@@ -73,5 +76,13 @@ void setupDependencies({required ShelterSnapshotSource snapshot}) {
   );
   getIt.registerFactory<ShelterController>(
     () => ShelterController(service: getIt()),
+  );
+
+  getIt.registerLazySingleton<TdxClient>(TdxClient.new);
+  getIt.registerLazySingleton<TransitService>(
+    () => TransitService(client: getIt()),
+  );
+  getIt.registerFactory<TransitController>(
+    () => TransitController(service: getIt()),
   );
 }

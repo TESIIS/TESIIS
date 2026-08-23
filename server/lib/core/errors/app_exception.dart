@@ -38,3 +38,13 @@ class ConflictException extends AppException {
 class ServerException extends AppException {
   ServerException(super.message, {super.code}) : super(statusCode: 500);
 }
+
+/// A dependency the caller can live without is down or unconfigured.
+///
+/// Distinct from [ServerException]: this is not "something is broken", it's
+/// "this optional feature can't run right now" — callers map it to 503 with
+/// an `available: false` body instead of a generic 500.
+class ServiceUnavailableException extends AppException {
+  ServiceUnavailableException(super.message, {super.code})
+    : super(statusCode: 503);
+}

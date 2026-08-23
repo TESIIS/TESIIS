@@ -12,6 +12,7 @@ import 'package:server/core/di/injection.dart' as di;
 import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
 import 'package:server/domain/repositories/shelter_repository.dart';
 import 'package:server/presentation/controllers/shelter_controller.dart';
+import 'package:server/presentation/controllers/transit_controller.dart';
 
 /// Maps the LOG_LEVEL config value onto a `package:logging` level.
 Level _logLevelFrom(String name) {
@@ -59,6 +60,17 @@ Future<void> main(List<String> args) async {
   di.setupDependencies(snapshot: snapshot);
   final shelterController = di.getIt<ShelterController>();
   final shelterRepository = di.getIt<ShelterRepository>();
+  final transitController = di.getIt<TransitController>();
+
+  // Cascade rather than two `.mount()` calls at the same '/api/' prefix:
+  // shelf_router's mount treats its sub-router's own 404 as "handled" and
+  // won't fall through to try the next mount, so a second controller at the
+  // same prefix would silently never be reached. Cascade tries the next
+  // handler whenever the previous one 404s.
+  final apiHandler = Cascade()
+      .add(shelterController.router.call)
+      .add(transitController.router.call)
+      .handler;
 
   final router = Router()
     ..get('/healthz', (Request _) {
@@ -76,7 +88,7 @@ Future<void> main(List<String> args) async {
         headers: const {'content-type': 'application/json; charset=utf-8'},
       );
     })
-    ..mount('/api/', shelterController.router.call);
+    ..mount('/api/', apiHandler);
 
   // Must be registered before serving, otherwise unmatched requests fall
   // through to shelf's default handler instead of this one.

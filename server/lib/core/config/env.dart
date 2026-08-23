@@ -143,4 +143,32 @@ class Env {
 
   static String get logLevel =>
       (_read('LOG_LEVEL') ?? defaultLogLevel).toLowerCase();
+
+  /// TDX OAuth2 client-credentials token endpoint.
+  static const tdxAuthUrl =
+      'https://tdx.transportdata.tw/auth/realms/TDXConnect/'
+      'protocol/openid-connect/token';
+
+  /// TDX "basic" data API base. Endpoints are appended as e.g.
+  /// `$tdxApiBaseUrl/v2/Rail/TRA/Station`.
+  static const tdxApiBaseUrl = 'https://tdx.transportdata.tw/api/basic';
+
+  static const defaultTdxTimeoutSeconds = 5;
+
+  static String? get tdxClientId => _read('TDX_CLIENT_ID');
+
+  static String? get tdxClientSecret => _read('TDX_CLIENT_SECRET');
+
+  /// Both credentials must be present — a client ID with no secret (or vice
+  /// versa) is a misconfiguration, not "half enabled".
+  static bool get tdxEnabled =>
+      (tdxClientId?.isNotEmpty ?? false) &&
+      (tdxClientSecret?.isNotEmpty ?? false);
+
+  static Duration get tdxTimeout {
+    final seconds =
+        int.tryParse(_read('TDX_TIMEOUT_SECONDS') ?? '') ??
+        defaultTdxTimeoutSeconds;
+    return Duration(seconds: seconds < 0 ? 0 : seconds);
+  }
 }
