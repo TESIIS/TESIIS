@@ -1,8 +1,20 @@
 # 全國化技術 Roadmap
 
+> **狀態（2026-08-23 核對）：Phase 0–3 已完成並上線，Phase 4 未開始，Phase 5 部分完成。**
+> 本頁保留原始規劃內容作為決策記錄，各階段開頭補上實際落地情況。
+>
+> | 階段 | 狀態 | 備註 |
+> |---|---|---|
+> | Phase 0 — 臺北獨立 Web 基線 | ✅ 完成 | |
+> | Phase 1 — 全國資料模型與快照 | ✅ 完成 | 快照 5,854 筆／22 縣市，拒絕 119 筆 |
+> | Phase 2 — API 擴充 | ✅ 完成 | 另超出規劃做了 `/shelters/clusters` |
+> | Phase 3 — 全國 Web UX | ✅ 完成 | 低速網路與空資料測試尚未加入 |
+> | Phase 4 — TDX 交通資訊 | ⬜ 未開始 | 只有 `city_codes.dart` 的 `tdxName` 對照 |
+> | Phase 5 — 發布與維運 | 🟡 部分完成 | 有自動部署與每週上游檢查；未推 GHCR multi-arch image |
+
 ## 目標
 
-將目前 401 筆臺北市避難設施的獨立 Web，擴充為支援臺灣 22 縣市的查詢服務，
+將原本 401 筆臺北市避難設施的獨立 Web，擴充為支援臺灣 22 縣市的查詢服務，
 同時維持下列原則：
 
 - 災時即使上游暫時不可用，服務仍能提供最近一次驗證過的資料快照。
@@ -37,7 +49,11 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 
 ## 分階段實作
 
-### Phase 0 — 臺北獨立 Web 基線（本次）
+### Phase 0 — 臺北獨立 Web 基線 ✅
+
+> 已完成。`compose.yaml` 起 `api` + `web` 兩個 service，web 以 Nginx 反向代理 `/api`；
+> `/healthz` 回傳資料源、快照時間與各縣市筆數；`bin/server.dart` 同時處理 SIGINT 與
+> SIGTERM（Windows 除外）。日誌只走 stdout／stderr。
 
 - Flutter Web 與 Dart API 各自容器化。
 - Nginx 對外提供單一 origin，`/api` 反向代理到內部 API。
@@ -48,7 +64,14 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 驗收：`docker compose up --build` 後，首頁、搜尋、篩選、定位拒絕狀態與 API
 皆可使用。
 
-### Phase 1 — 全國資料模型與快照
+### Phase 1 — 全國資料模型與快照 ✅
+
+> 已完成。`NfaShelterApi` + `ShelterSnapshotSource` + `NfaShelterMapper` 就位；
+> deterministic ID 以 FNV-1a 產生（`NFA-{cityCode}-{hash}`）；品質閘門改用
+> `core/geo/taiwan_bounds.dart` 的 22 縣市 bounding box（金門縣因烏坵鄉飛地用兩個 box）。
+> 產出 `data/shelters_nationwide.csv`（5,854 筆通過，98.0%）與
+> `data/shelters_rejected.csv`（119 筆，全為 `out_of_county_bounds`）。
+> `.github/workflows/upstream-data-check.yml` 的 `check-nationwide` job 每週一重跑並保留 90 天 artifact。
 
 1. 建立 `NfaShelterApi`／`NfaShelterSnapshot`，解析全國 CSV。
 2. 定義不依賴來源欄名的 normalized schema：
@@ -61,7 +84,12 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 
 驗收門檻：22 縣市皆有資料、總筆數異常變動會使 CI 失敗、每筆都有來源與更新時間。
 
-### Phase 2 — API 擴充
+### Phase 2 — API 擴充 ✅
+
+> 已完成，且超出原規劃：除了 `/api/regions`、`bbox` 過濾、`snapshotUpdatedAt`／`dataSource`／
+> `dataFreshness` 中繼資料之外，另加了 `/api/shelters/clusters`（server 端網格分群，
+> 全台視野回應從 ~470 KB 降到數 KB）與 `disasters`／`spaces` 篩選群組參數
+> （群內 OR、跨群 AND）。`limit` 預設值改為 `Env.maxSnapshotItems`，並新增 `truncated` 欄位。
 
 - `GET /api/regions`：縣市、鄉鎮與資料筆數。
 - `GET /api/shelters?city=&township=&bbox=&limit=&offset=`：區域與 viewport 查詢。
@@ -72,7 +100,14 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 驗收門檻：每個縣市至少一個 contract test；同一組 filter 在 list、stats、nearby
 端點結果一致。
 
-### Phase 3 — 全國 Web UX
+### Phase 3 — 全國 Web UX ✅
+
+> 已完成。前端改為視窗式串流（marker 走 `/shelters/clusters`、附近走 `/shelters/nearby`、
+> 搜尋走 `limit`／`offset` 分頁），自寫網格 clustering 在 `domain/marker_clustering.dart`，
+> 離線快取改為有界 LRU（`data/datasources/request_cache.dart`，12 筆）。
+> 地圖預設中心改為臺灣地理中心，`TaipeiBounds` 警語已移除。
+> **未完成：** 低速網路與空資料的 smoke test 還沒加，`e2e/tests/smoke.spec.ts` 目前是
+> 首頁載入／搜尋／開啟詳情／縣市涵蓋四項。
 
 - 初次進站優先使用使用者定位；未授權時顯示全國視野與縣市選擇器。
 - 地圖依 viewport 請求資料，加入 marker clustering；不建立 5,000 個以上 Widget。
@@ -82,7 +117,10 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 
 驗收門檻：全國初始載入不下載完整明細；一般行動裝置可在 3 秒內操作第一個畫面。
 
-### Phase 4 — TDX 交通資訊
+### Phase 4 — TDX 交通資訊 ⬜
+
+> 未開始。目前只有 `server/lib/core/geo/city_codes.dart` 保留了 22 縣市對應 TDX
+> `{City}` 路徑參數的 `tdxName` 欄位；沒有 `TdxClient`、沒有 TDX 相依、沒有憑證。
 
 - 新增 server-side `TdxClient`，實作 token expiry buffer、timeout、retry、快取與
   circuit breaker。
@@ -92,7 +130,12 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 
 驗收門檻：沒有 TDX credentials 時主站仍可用；TDX timeout 時回傳可辨識的降級狀態。
 
-### Phase 5 — 發布與維運
+### Phase 5 — 發布與維運 🟡
+
+> 部分完成。`.github/workflows/deploy.yml` 會在 CI 於 master 通過後 SSH 進正式 VPS 重新部署；
+> `upstream-data-check.yml` 每週一重跑兩條資料管線並比對已 commit 的產出。
+> **未完成：** 尚未建置並推送 `linux/amd64` + `linux/arm64` 的 GHCR image
+> （目前是在 VPS 上直接 `docker compose up --build`），也還沒有 `/healthz` 與各縣市筆數的長期監控。
 
 - CI 建置 `linux/amd64` 與 `linux/arm64` images，推送 GHCR。
 - 每週抓取新資料到暫存區，完成 schema、筆數、縣市與座標檢查後才發布 snapshot。

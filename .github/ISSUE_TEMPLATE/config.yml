@@ -3,6 +3,6 @@ contact_links:
   - name: 安全性問題
     url: https://github.com/Twcat0503/2025Taipei-codefest-team30/security/advisories/new
     about: 請透過 private vulnerability reporting，不要開公開 issue。
-  - name: 上游資料本身有誤（名稱、地址、容納人數、聯絡人）
-    url: https://data.taipei/
-    about: 這些欄位直接來自臺北市資料大平臺，本專案不修改，請向資料提供機關反映。
+  - name: 上游資料本身有誤（名稱、地址、座標、容納人數、聯絡人）
+    url: https://data.gov.tw/dataset/73242
+    about: 這些欄位直接來自內政部消防署「避難收容處所點位檔」，本專案不修改，請向資料提供機關反映。

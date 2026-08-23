@@ -45,19 +45,19 @@ body:
       required: true
 
   - type: textarea
-    id: coverage-line
+    id: snapshot-line
     attributes:
       label: 後端啟動訊息
       description: |
-        貼上 server 啟動時印出的座標覆蓋率那一行。地圖沒有標記的問題八成出在這裡。
-      placeholder: '[DI] Coordinate table: data/shelter_coordinates.csv (380/401 shelters located, 94.8%)'
+        貼上 server 啟動時印出的 `[DI] Nationwide snapshot:` 那一行。地圖沒有標記的問題八成出在這裡。
+      placeholder: '[DI] Nationwide snapshot: data/shelters_nationwide.csv (5854 shelters, 22 counties, updated 2026-08-22T18:47:48.929091Z)'
       render: text
 
   - type: input
     id: shelter-code
     attributes:
       label: 收容所編號（如果是特定避難所的資料錯誤）
-      placeholder: SA100-0002
+      placeholder: NFA-TPE-013f9700229ebca3
 
   - type: textarea
     id: versions
