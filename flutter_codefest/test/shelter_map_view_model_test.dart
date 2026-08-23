@@ -344,6 +344,92 @@ void main() {
     });
   });
 
+  group('search preview', () {
+    Future<ShelterMapViewModel> locatedViewModel({
+      required Future<List<Shelter>> Function({
+        required double lat,
+        required double lng,
+        double? radiusMeters,
+        int limit,
+        Set<String>? disasters,
+        Set<String>? spaces,
+      })
+      nearby,
+    }) async {
+      final vm = ShelterMapViewModel(
+        fetchClusters: (params) async => const [],
+        fetchShelterPage: (params) async =>
+            const ShelterPage(shelters: [], total: 0, truncated: false),
+        fetchNearby: nearby,
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.always,
+        requestPermission: () async => LocationPermission.always,
+        getLastKnownPosition: () async => null,
+        getCurrentPosition: () async => fakePosition(lat: 25.0, lng: 121.5),
+        cacheGet: (key) async => null,
+        cachePut: (key, body) async {},
+      );
+      await vm.getCurrentLocation();
+      return vm;
+    }
+
+    test(
+      'opening search with a known position shows a nearest-first preview',
+      () async {
+        final near = fakeShelter(id: 1, lat: 25.0, lng: 121.5, name: '近的');
+        final vm = await locatedViewModel(
+          nearby:
+              ({
+                required lat,
+                required lng,
+                radiusMeters,
+                limit = 10,
+                disasters,
+                spaces,
+              }) async => [near],
+        );
+
+        vm.toggleSearching();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(vm.searchPreview, [near]);
+      },
+    );
+
+    test('clearing a typed query falls back to the preview again', () async {
+      final near = fakeShelter(id: 1, lat: 25.0, lng: 121.5, name: '近的');
+      final vm = await locatedViewModel(
+        nearby:
+            ({
+              required lat,
+              required lng,
+              radiusMeters,
+              limit = 10,
+              disasters,
+              spaces,
+            }) async => [near],
+      );
+
+      await vm.search('某個關鍵字');
+      expect(vm.searchPreview, isEmpty);
+
+      await vm.search('');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(vm.searchResults, isEmpty);
+      expect(vm.searchPreview, [near]);
+    });
+
+    test('without a known position, the preview stays empty', () async {
+      final vm = _viewModel();
+
+      vm.toggleSearching();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(vm.searchPreview, isEmpty);
+    });
+  });
+
   group('toggleFilter', () {
     test('re-issues the current search with the new groups', () async {
       Map<String, String>? seen;

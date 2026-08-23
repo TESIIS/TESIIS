@@ -95,10 +95,10 @@ test.describe('shelter web smoke', () => {
     test.setTimeout(60_000);
 
     await page.goto('/');
-    await expect(page).toHaveTitle('臺灣避難收容處所資訊整合系統');
+    await expect(page).toHaveTitle('臺灣避難收容所資訊整合系統');
     await enableSemantics(page);
 
-    await expect(page.getByText('TESIIS 臺灣避難收容處所地圖')).toBeVisible({
+    await expect(page.getByText('TESIIS 臺灣避難收容所地圖')).toBeVisible({
       timeout: 15_000,
     });
   });

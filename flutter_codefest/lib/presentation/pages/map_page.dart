@@ -37,7 +37,7 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
   late final ShelterMapViewModel _viewModel;
@@ -46,10 +46,15 @@ class _MapPageState extends State<MapPage> {
   bool _isMapReady = false;
   Timer? _idleTimer;
 
+  /// Drives [_animatedMapMove]. Tracked so a move started while a previous
+  /// one is still running can cancel it instead of the two fighting over
+  /// `_mapController`, and so it can be disposed with the rest of the state.
+  AnimationController? _moveAnimController;
+
   /// Which nearest shelter the nearby panel was last closed for, so closing
   /// it doesn't hide it forever — it comes back once a *different* shelter
   /// becomes the nearest one (the user moved somewhere the old dismissal no
-  /// longer applies to).
+  /// longer applies to), or the user taps the reopen button.
   String? _nearbyPanelDismissedFor;
 
   @override
@@ -62,6 +67,7 @@ class _MapPageState extends State<MapPage> {
   @override
   void dispose() {
     _idleTimer?.cancel();
+    _moveAnimController?.dispose();
     _searchController.dispose();
     _mapController.dispose();
     _viewModel.dispose();
@@ -107,11 +113,61 @@ class _MapPageState extends State<MapPage> {
   void _onMarkerTapped(Shelter shelter) {
     _viewModel.selectShelter(shelter);
     if (_isMapReady && shelter.hasCoordinate) {
-      _mapController.move(
+      _animatedMapMove(
         LatLng(shelter.latitude!, shelter.longitude!),
         _mapController.camera.zoom,
       );
     }
+  }
+
+  /// Eases the camera to [destLocation]/[destZoom] instead of jumping there,
+  /// so picking a different shelter reads as travel across the map rather
+  /// than a jump-cut.
+  ///
+  /// flutter_map has no built-in animated `move` — this is the standard
+  /// hand-rolled recipe (tween lat/lng/zoom, drive `_mapController.move` off
+  /// an `AnimationController`) rather than a package pull for one call site,
+  /// matching this project's minimal-dependency stance.
+  void _animatedMapMove(LatLng destLocation, double destZoom) {
+    _moveAnimController?.dispose();
+    final camera = _mapController.camera;
+    final latTween = Tween<double>(
+      begin: camera.center.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: camera.center.longitude,
+      end: destLocation.longitude,
+    );
+    final zoomTween = Tween<double>(begin: camera.zoom, end: destZoom);
+
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _moveAnimController = controller;
+    final animation = CurvedAnimation(
+      parent: controller,
+      curve: Curves.easeInOutCubic,
+    );
+
+    controller.addListener(() {
+      _mapController.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    });
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        if (identical(_moveAnimController, controller)) {
+          _moveAnimController = null;
+        }
+        controller.dispose();
+      }
+    });
+
+    controller.forward();
   }
 
   /// Zooms in on a cluster rather than trying to select one of its members —
@@ -131,7 +187,7 @@ class _MapPageState extends State<MapPage> {
       await _showClusterMembers(cluster);
       return;
     }
-    _mapController.move(cluster.center, zoom + 2);
+    _animatedMapMove(cluster.center, zoom + 2);
   }
 
   Future<void> _showClusterMembers(ShelterCluster cluster) async {
@@ -251,12 +307,14 @@ class _MapPageState extends State<MapPage> {
       onClusterTap: _onClusterTapped,
     );
 
-    final showNearbyPanel =
+    final nearbyPanelAvailable =
         vm.currentPosition != null &&
         vm.nearbyShelters.isNotEmpty &&
         !vm.showShelterDetails &&
-        !vm.isSearching &&
-        vm.nearbyShelters.first.shelterId != _nearbyPanelDismissedFor;
+        !vm.isSearching;
+    final nearbyPanelDismissed =
+        nearbyPanelAvailable &&
+        vm.nearbyShelters.first.shelterId == _nearbyPanelDismissedFor;
 
     final hasFilters =
         vm.selectedDisasterTypes.isNotEmpty || vm.selectedSpaceTypes.isNotEmpty;
@@ -302,6 +360,23 @@ class _MapPageState extends State<MapPage> {
                 MaterialPageRoute(
                   builder: (context) => const DataQualityPage(),
                 ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 372,
+          child: Material(
+            color: colorScheme.surface,
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: IconButton(
+              tooltip: '使用手冊',
+              icon: Icon(Icons.menu_book, color: colorScheme.onSurfaceVariant),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const UserManualPage()),
               ),
             ),
           ),
@@ -359,7 +434,9 @@ class _MapPageState extends State<MapPage> {
               ),
 
               _animatedSlot(
-                vm.isSearching && vm.searchQuery.isNotEmpty
+                vm.isSearching &&
+                        (vm.searchQuery.isNotEmpty ||
+                            vm.searchPreview.isNotEmpty)
                     ? Container(
                         margin: const EdgeInsets.only(top: 8),
                         constraints: BoxConstraints(
@@ -379,20 +456,36 @@ class _MapPageState extends State<MapPage> {
                           borderRadius: BorderRadius.circular(12),
                           elevation: 6,
                           clipBehavior: Clip.antiAlias,
-                          child: SearchResultsList(
-                            shelters: vm.searchResults,
-                            total: vm.searchTotal,
-                            hasMore: vm.searchHasMore,
-                            isLoadingMore: vm.isLoadingMore,
-                            hasFilters: hasFilters,
-                            currentPosition: vm.currentPosition,
-                            selectedShelter: vm.selectedShelter,
-                            onSelect: (shelter) {
-                              _onMarkerTapped(shelter);
-                              _toggleSearch();
-                            },
-                            onLoadMore: vm.loadMoreSearch,
-                          ),
+                          child: vm.searchQuery.isEmpty
+                              ? SearchResultsList(
+                                  shelters: vm.searchPreview,
+                                  total: vm.searchPreview.length,
+                                  hasMore: false,
+                                  isLoadingMore: false,
+                                  hasFilters: hasFilters,
+                                  currentPosition: vm.currentPosition,
+                                  selectedShelter: vm.selectedShelter,
+                                  previewLabel: '距離最近的避難所',
+                                  onSelect: (shelter) {
+                                    _onMarkerTapped(shelter);
+                                    _toggleSearch();
+                                  },
+                                  onLoadMore: () {},
+                                )
+                              : SearchResultsList(
+                                  shelters: vm.searchResults,
+                                  total: vm.searchTotal,
+                                  hasMore: vm.searchHasMore,
+                                  isLoadingMore: vm.isLoadingMore,
+                                  hasFilters: hasFilters,
+                                  currentPosition: vm.currentPosition,
+                                  selectedShelter: vm.selectedShelter,
+                                  onSelect: (shelter) {
+                                    _onMarkerTapped(shelter);
+                                    _toggleSearch();
+                                  },
+                                  onLoadMore: vm.loadMoreSearch,
+                                ),
                         ),
                       )
                     : null,
@@ -416,20 +509,21 @@ class _MapPageState extends State<MapPage> {
             wide: isWide,
           ),
 
-        if (showNearbyPanel)
+        if (nearbyPanelAvailable && !nearbyPanelDismissed)
           NearbyShelterPanel(
             nearest: vm.nearbyShelters.first,
             currentPosition: vm.currentPosition!,
             onNavigate: () => _openNavigation(vm.nearbyShelters.first),
             onViewDetail: () => _onMarkerTapped(vm.nearbyShelters.first),
-            onOpenManual: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const UserManualPage()),
-            ),
             onClose: () => setState(() {
               _nearbyPanelDismissedFor = vm.nearbyShelters.first.shelterId;
             }),
             wide: isWide,
+          ),
+
+        if (nearbyPanelDismissed)
+          NearbyPanelReopenButton(
+            onTap: () => setState(() => _nearbyPanelDismissedFor = null),
           ),
       ],
     );

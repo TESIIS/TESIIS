@@ -100,6 +100,13 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool _isLoadingMore = false;
   String _searchQuery = '';
 
+  /// Nearest-first shelters shown while search is open but empty — search
+  /// used to just sit blank (or worse, look like a failed search) until the
+  /// user typed something.
+  List<Shelter> _searchPreview = const [];
+  bool _isLoadingPreview = false;
+  int _previewRequestId = 0;
+
   Position? _currentPosition;
   Shelter? _selectedShelter;
   bool _showShelterDetails = false;
@@ -140,6 +147,8 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool get searchHasMore => _searchHasMore;
   bool get isLoadingMore => _isLoadingMore;
   String get searchQuery => _searchQuery;
+  List<Shelter> get searchPreview => _searchPreview;
+  bool get isLoadingPreview => _isLoadingPreview;
 
   Position? get currentPosition => _currentPosition;
   LatLng? get currentLatLng => _currentPosition == null
@@ -285,12 +294,17 @@ class ShelterMapViewModel extends ChangeNotifier {
       _searchResults = const [];
       _searchTotal = 0;
       _searchHasMore = false;
+      _searchPreview = const [];
+      _previewRequestId++;
       // The map kept moving (and skipping cluster fetches) while search was
       // open — bring the markers back in sync with the current viewport.
       unawaited(refreshClusters());
-    } else if (_showShelterDetails) {
-      _showShelterDetails = false;
-      _selectedShelter = null;
+    } else {
+      if (_showShelterDetails) {
+        _showShelterDetails = false;
+        _selectedShelter = null;
+      }
+      unawaited(_loadSearchPreview());
     }
     notifyListeners();
   }
@@ -307,6 +321,8 @@ class ShelterMapViewModel extends ChangeNotifier {
       _searchResults = const [];
       _searchTotal = 0;
       _searchHasMore = false;
+      _searchPreview = const [];
+      _previewRequestId++;
       unawaited(refreshClusters());
     }
     if (_showShelterDetails) {
@@ -339,6 +355,8 @@ class ShelterMapViewModel extends ChangeNotifier {
     try {
       if (_isSearching && _searchQuery.isNotEmpty) {
         await search(_searchQuery);
+      } else if (_isSearching) {
+        await _loadSearchPreview();
       } else {
         await refreshClusters();
       }
@@ -359,9 +377,51 @@ class ShelterMapViewModel extends ChangeNotifier {
       _searchHasMore = false;
       _searchOffset = 0;
       notifyListeners();
+      // Nothing typed — fall back to the nearest-first preview rather than
+      // leaving the results list empty.
+      unawaited(_loadSearchPreview());
       return;
     }
     await _fetchSearchPage(offset: 0, requestId: ++_searchRequestId);
+  }
+
+  /// Nearest-first shelters for the search panel's empty-query state.
+  ///
+  /// Reuses `/shelters/nearby` (unbounded radius, sorted by distance) rather
+  /// than inventing a second endpoint — it's exactly "distance order,
+  /// nearest first" already. Requires a known position; with none yet, the
+  /// preview just stays empty rather than guessing.
+  Future<void> _loadSearchPreview() async {
+    final position = _currentPosition;
+    if (position == null) {
+      _searchPreview = const [];
+      notifyListeners();
+      return;
+    }
+    final id = ++_previewRequestId;
+    _isLoadingPreview = true;
+    notifyListeners();
+    try {
+      final preview = await _fetchNearby(
+        lat: position.latitude,
+        lng: position.longitude,
+        limit: searchPageSize,
+        disasters: _selectedDisasterTypes.isEmpty
+            ? null
+            : _selectedDisasterTypes,
+        spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
+      );
+      if (id != _previewRequestId) return;
+      _searchPreview = preview;
+    } catch (_) {
+      if (id != _previewRequestId) return;
+      _searchPreview = const [];
+    } finally {
+      if (id == _previewRequestId) {
+        _isLoadingPreview = false;
+        notifyListeners();
+      }
+    }
   }
 
   /// Loads the next page of the current search, if one exists. Failures
@@ -524,6 +584,11 @@ class ShelterMapViewModel extends ChangeNotifier {
   ) async {
     _currentPosition = position;
     await _loadNearbyShelters(position, radiusMeters);
+    // Search may have been opened before a position was known (the preview
+    // load then found nothing to show) — now that one exists, fill it in.
+    if (_isSearching && _searchQuery.isEmpty) {
+      unawaited(_loadSearchPreview());
+    }
 
     _locationMessage =
         '已定位: ${position.latitude.toStringAsFixed(4)}, '

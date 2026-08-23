@@ -5,7 +5,7 @@ import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/presentation/widgets/common/disaster_chip.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// The nearest-shelter summary, plus the floating user-manual button.
+/// The nearest-shelter summary card.
 ///
 /// Below [MapConstants.desktopBreakpoint] this renders as the mobile
 /// full-width bottom band; at or above it, as a fixed-width floating card
@@ -17,7 +17,6 @@ class NearbyShelterPanel extends StatelessWidget {
     required this.currentPosition,
     required this.onNavigate,
     required this.onViewDetail,
-    required this.onOpenManual,
     required this.onClose,
     this.wide = false,
   });
@@ -26,7 +25,6 @@ class NearbyShelterPanel extends StatelessWidget {
   final Position currentPosition;
   final VoidCallback onNavigate;
   final VoidCallback onViewDetail;
-  final VoidCallback onOpenManual;
   final VoidCallback onClose;
   final bool wide;
 
@@ -67,55 +65,45 @@ class NearbyShelterPanel extends StatelessWidget {
       left: 16,
       bottom: 16,
       width: MapConstants.desktopPanelWidth,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _ManualButton(colorScheme: colorScheme, onTap: onOpenManual),
-          ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(child: _Header(colorScheme: colorScheme)),
-                    _CloseButton(colorScheme: colorScheme, onTap: onClose),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _InfoBlock(
-                  nearest: nearest,
-                  distanceText: _distanceText,
-                  walkingTimeText: _walkingTimeText,
-                  colorScheme: colorScheme,
-                ),
-                const SizedBox(height: 12),
-                _ActionButtons(
-                  colorScheme: colorScheme,
-                  onNavigate: onNavigate,
-                  onViewDetail: onViewDetail,
-                ),
+                Expanded(child: _Header(colorScheme: colorScheme)),
+                _CloseButton(colorScheme: colorScheme, onTap: onClose),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            _InfoBlock(
+              nearest: nearest,
+              distanceText: _distanceText,
+              walkingTimeText: _walkingTimeText,
+              colorScheme: colorScheme,
+            ),
+            const SizedBox(height: 12),
+            _ActionButtons(
+              colorScheme: colorScheme,
+              onNavigate: onNavigate,
+              onViewDetail: onViewDetail,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -138,74 +126,111 @@ class NearbyShelterPanel extends StatelessWidget {
       left: 0,
       right: 0,
       bottom: 0,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16, bottom: 12),
-            child: _ManualButton(colorScheme: colorScheme, onTap: onOpenManual),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          8,
+          20,
+          16 + MediaQuery.paddingOf(context).bottom,
+        ),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
           ),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.fromLTRB(
-              20,
-              8,
-              20,
-              16 + MediaQuery.paddingOf(context).bottom,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
             ),
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, -3),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(child: _Header(colorScheme: colorScheme)),
+                _CloseButton(colorScheme: colorScheme, onTap: onClose),
               ],
             ),
-            child: Column(
+            const SizedBox(height: 12),
+            _InfoBlock(
+              nearest: nearest,
+              distanceText: _distanceText,
+              walkingTimeText: _walkingTimeText,
+              colorScheme: colorScheme,
+            ),
+            const SizedBox(height: 12),
+            _ActionButtons(
+              colorScheme: colorScheme,
+              onNavigate: onNavigate,
+              onViewDetail: onViewDetail,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A small pill shown in the nearby panel's place after it's been closed —
+/// tapping it brings the panel back. Without this, closing the panel was a
+/// one-way trip: the only other way it reappeared was automatically, once a
+/// *different* shelter became the nearest one.
+class NearbyPanelReopenButton extends StatelessWidget {
+  const NearbyPanelReopenButton({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Positioned(
+      left: 16,
+      bottom: 16,
+      child: Material(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        elevation: 4,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                Icon(Icons.near_me, color: colorScheme.primary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  '顯示最近的避難設施',
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
-                Row(
-                  children: [
-                    Expanded(child: _Header(colorScheme: colorScheme)),
-                    _CloseButton(colorScheme: colorScheme, onTap: onClose),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _InfoBlock(
-                  nearest: nearest,
-                  distanceText: _distanceText,
-                  walkingTimeText: _walkingTimeText,
-                  colorScheme: colorScheme,
-                ),
-                const SizedBox(height: 12),
-                _ActionButtons(
-                  colorScheme: colorScheme,
-                  onNavigate: onNavigate,
-                  onViewDetail: onViewDetail,
-                ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -224,30 +249,6 @@ class _CloseButton extends StatelessWidget {
       icon: Icon(Icons.close, color: colorScheme.onSurfaceVariant, size: 20),
       visualDensity: VisualDensity.compact,
       onPressed: onTap,
-    );
-  }
-}
-
-class _ManualButton extends StatelessWidget {
-  const _ManualButton({required this.colorScheme, required this.onTap});
-
-  final ColorScheme colorScheme;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: colorScheme.surface,
-      shape: const CircleBorder(),
-      elevation: 6,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          child: Icon(Icons.menu_book, color: colorScheme.primary, size: 28),
-        ),
-      ),
     );
   }
 }

@@ -8,7 +8,7 @@ class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '臺灣避難收容處所資訊整合系統',
+      title: '臺灣避難收容所資訊整合系統',
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       // Default to light regardless of system setting. AppTheme.dark() stays

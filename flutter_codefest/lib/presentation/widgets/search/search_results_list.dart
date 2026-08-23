@@ -18,6 +18,7 @@ class SearchResultsList extends StatelessWidget {
     required this.selectedShelter,
     required this.onSelect,
     required this.onLoadMore,
+    this.previewLabel,
   });
 
   final List<Shelter> shelters;
@@ -34,6 +35,11 @@ class SearchResultsList extends StatelessWidget {
   final ValueChanged<Shelter> onSelect;
   final VoidCallback onLoadMore;
 
+  /// When set, this list is the nearest-first preview shown before a query
+  /// is typed — the header reads this instead of "共 N 筆" so it doesn't look
+  /// like a search actually ran.
+  final String? previewLabel;
+
   @override
   Widget build(BuildContext context) {
     if (shelters.isEmpty) {
@@ -43,7 +49,11 @@ class SearchResultsList extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _ResultSummary(shelters: shelters, total: total),
+        _ResultSummary(
+          shelters: shelters,
+          total: total,
+          previewLabel: previewLabel,
+        ),
         Flexible(
           child: NotificationListener<ScrollNotification>(
             onNotification: (notification) {
@@ -131,16 +141,22 @@ class _EmptyState extends StatelessWidget {
 /// Without this the list and the map disagree — a search can return 30 hits
 /// while only 28 pins appear — and the user has no way to know why.
 class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({required this.shelters, required this.total});
+  const _ResultSummary({
+    required this.shelters,
+    required this.total,
+    this.previewLabel,
+  });
 
   final List<Shelter> shelters;
   final int total;
+  final String? previewLabel;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final missing = shelters.where((s) => !s.hasCoordinate).length;
     final hasMore = shelters.length < total;
+    final label = previewLabel;
 
     return Container(
       width: double.infinity,
@@ -148,7 +164,10 @@ class _ResultSummary extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            hasMore ? '共 $total 筆（已載入 ${shelters.length} 筆）' : '共 $total 筆',
+            label ??
+                (hasMore
+                    ? '共 $total 筆（已載入 ${shelters.length} 筆）'
+                    : '共 $total 筆'),
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
