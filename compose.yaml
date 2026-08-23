@@ -2,6 +2,12 @@ name: taipei-shelter-web
 
 services:
   api:
+    # `image:` alongside `build:` lets the same file serve two paths:
+    # `docker compose up --build` (this file's documented dev/local flow)
+    # always builds fresh from source and tags the result with this name;
+    # `docker compose pull` (used by deploy.yml on the VPS) fetches the
+    # prebuilt multi-arch image from GHCR instead, with no local build.
+    image: ghcr.io/tesiis/server:latest
     build:
       context: ./server
     environment:
@@ -26,6 +32,7 @@ services:
     stop_grace_period: 10s
 
   web:
+    image: ghcr.io/tesiis/web:latest
     build:
       context: ./flutter_codefest
       args:

@@ -52,5 +52,11 @@ jobs:
             cd /root/apps/2025Taipei-codefest-team30
             git fetch origin
             git checkout --force "$DEPLOY_SHA"
-            docker compose up --build -d
+            # Prefer the prebuilt GHCR image (CI's publish-images/merge-manifests
+            # jobs push it on every master push) — faster, and doesn't burn VPS
+            # CPU on every deploy. Falls back to a full local build on ANY
+            # failure of the pull-and-up path (package not public yet, GHCR
+            # hiccup, image not published for this run, etc.) — deploy must
+            # never go down just because the GHCR side isn't set up yet.
+            docker compose pull && docker compose up -d || docker compose up -d --build
             docker image prune -f
