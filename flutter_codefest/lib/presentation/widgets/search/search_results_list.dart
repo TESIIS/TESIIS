@@ -152,6 +152,18 @@ class _ShelterResultTile extends StatelessWidget {
   final Position? currentPosition;
   final VoidCallback onTap;
 
+  /// Nationwide there are many facilities that share a generic name
+  /// ("活動中心", "○○國小") or even a full name across different counties —
+  /// without the region prefix a search result is unidentifiable at a
+  /// glance.
+  String get _locationText {
+    final region = [
+      shelter.city,
+      shelter.district,
+    ].where((s) => s.isNotEmpty).join('');
+    return region.isEmpty ? shelter.address : '$region・${shelter.address}';
+  }
+
   String get _distanceText {
     // These facilities exist, they just have no coordinate on record — still
     // listed, with an external map offered instead.
@@ -191,7 +203,7 @@ class _ShelterResultTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            shelter.address,
+            _locationText,
             style: TextStyle(color: accent, fontSize: 12),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

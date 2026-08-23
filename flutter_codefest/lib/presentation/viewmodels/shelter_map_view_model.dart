@@ -83,7 +83,6 @@ class ShelterMapViewModel extends ChangeNotifier {
 
   bool _isSearching = false;
   bool _isLoadingLocation = false;
-  bool _showOutOfRangeWarning = false;
   String? _locationMessage;
   bool _isLocationSuccess = true;
 
@@ -126,7 +125,6 @@ class ShelterMapViewModel extends ChangeNotifier {
 
   bool get isSearching => _isSearching;
   bool get isLoadingLocation => _isLoadingLocation;
-  bool get showOutOfRangeWarning => _showOutOfRangeWarning;
   String? get locationMessage => _locationMessage;
   bool get isLocationSuccess => _isLocationSuccess;
   bool get isShowingCachedData => _isShowingCachedData;
@@ -141,7 +139,7 @@ class ShelterMapViewModel extends ChangeNotifier {
       _shelters = await _fetchAllShelters();
       _isShowingCachedData = false;
       _cachedAt = null;
-      updateVisibleShelters(currentLatLng ?? MapConstants.taipeiCenter);
+      updateVisibleShelters(currentLatLng ?? MapConstants.taiwanCenter);
       unawaited(_cacheShelters(_shelters));
     } catch (_) {
       final cached = await _loadCachedShelters();
@@ -149,7 +147,7 @@ class ShelterMapViewModel extends ChangeNotifier {
         _shelters = cached.shelters;
         _isShowingCachedData = true;
         _cachedAt = cached.cachedAt;
-        updateVisibleShelters(currentLatLng ?? MapConstants.taipeiCenter);
+        updateVisibleShelters(currentLatLng ?? MapConstants.taiwanCenter);
         return;
       }
       _locationMessage = '無法連線到伺服器,請確認後端已啟動';
@@ -178,15 +176,6 @@ class ShelterMapViewModel extends ChangeNotifier {
           shelter,
     ];
     notifyListeners();
-  }
-
-  /// Flags whether [center] has panned outside 臺北市, for the warning banner.
-  void checkTaipeiRange(LatLng center) {
-    final isOutOfRange = !MapConstants.isWithinTaipei(center);
-    if (_showOutOfRangeWarning != isOutOfRange) {
-      _showOutOfRangeWarning = isOutOfRange;
-      notifyListeners();
-    }
   }
 
   // ---------------------------------------------------------------------

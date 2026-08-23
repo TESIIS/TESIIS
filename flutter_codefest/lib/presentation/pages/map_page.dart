@@ -69,7 +69,7 @@ class _MapPageState extends State<MapPage> {
   void _onMapReady() {
     _isMapReady = true;
     _viewModel.updateVisibleShelters(
-      _viewModel.currentLatLng ?? MapConstants.taipeiCenter,
+      _viewModel.currentLatLng ?? MapConstants.taiwanCenter,
     );
   }
 
@@ -79,7 +79,6 @@ class _MapPageState extends State<MapPage> {
     _idleTimer?.cancel();
     _idleTimer = Timer(MapConstants.idleDebounce, () {
       if (!mounted || _viewModel.isSearching) return;
-      _viewModel.checkTaipeiRange(camera.center);
       _viewModel.updateVisibleShelters(camera.center);
     });
   }
@@ -297,16 +296,6 @@ class _MapPageState extends State<MapPage> {
                         message:
                             '顯示上次快取資料'
                             '${vm.cachedAt != null ? '（更新於 ${_formatCachedAt(vm.cachedAt!)}）' : ''}',
-                      )
-                    : null,
-              ),
-
-              _animatedSlot(
-                vm.showOutOfRangeWarning
-                    ? const StatusBanner(
-                        tone: StatusTone.warning,
-                        icon: Icons.warning_amber_rounded,
-                        message: '目前位置超出台北市範圍，避難所資料僅限台北市',
                       )
                     : null,
               ),

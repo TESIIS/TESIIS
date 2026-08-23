@@ -27,7 +27,10 @@ void main() {
 
   group('loadShelters', () {
     test('populates shelters and computes the visible set', () async {
-      final near = fakeShelter(id: 1, lat: 25.0375, lng: 121.5651);
+      // Without a location fix, updateVisibleShelters falls back to
+      // MapConstants.taiwanCenter — "near" must actually be near that, not
+      // near old Taipei-only default it replaced.
+      final near = fakeShelter(id: 1, lat: 23.7, lng: 121.001);
       final far = fakeShelter(id: 2, lat: 26.0, lng: 122.0);
       final vm = _viewModel(shelters: [near, far]);
 

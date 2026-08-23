@@ -21,7 +21,12 @@ Uri buildNavigationUri(Shelter shelter, {Position? from}) {
   }
 
   // No coordinate: fall back to a text search on the address, which is the
-  // whole reason these shelters stay in the list.
-  final query = Uri.encodeComponent('臺北市${shelter.district}${shelter.address}');
+  // whole reason these shelters stay in the list. Uses the shelter's own
+  // city — hardcoding 臺北市 here was fine when that was the only county in
+  // the dataset, but would send every other county's uncoordinated shelters
+  // to the wrong place nationwide.
+  final query = Uri.encodeComponent(
+    '${shelter.city}${shelter.district}${shelter.address}',
+  );
   return Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
 }

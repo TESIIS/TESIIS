@@ -31,9 +31,9 @@ class ShelterMapView extends StatelessWidget {
     return FlutterMap(
       mapController: mapController,
       options: MapOptions(
-        initialCenter: MapConstants.taipeiCenter,
-        initialZoom: 12.0,
-        minZoom: 8,
+        initialCenter: MapConstants.taiwanCenter,
+        initialZoom: MapConstants.nationwideZoom,
+        minZoom: 6,
         maxZoom: 19,
         onMapReady: onMapReady,
         onPositionChanged: onPositionChanged,

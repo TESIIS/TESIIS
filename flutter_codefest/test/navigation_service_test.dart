@@ -46,5 +46,24 @@ void main() {
         expect(uri.queryParameters['query'], contains('公園路29號'));
       },
     );
+
+    test('uses the shelter\'s own city, not a hardcoded 臺北市', () {
+      // Regression: nationwide, an uncoordinated shelter outside Taipei
+      // used to get "臺北市" prepended regardless of its real city, which
+      // would send the fallback address search to the wrong county.
+      final shelter = fakeShelter(
+        id: 1,
+        city: '高雄市',
+        district: '前鎮區',
+        address: '廣西路57號',
+        lat: null,
+        lng: null,
+      );
+
+      final uri = buildNavigationUri(shelter);
+
+      expect(uri.queryParameters['query'], contains('高雄市'));
+      expect(uri.queryParameters['query'], isNot(contains('臺北市')));
+    });
   });
 }
