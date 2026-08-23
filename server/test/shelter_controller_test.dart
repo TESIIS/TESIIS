@@ -492,4 +492,91 @@ void main() {
       expect(body.containsKey('dataFreshness'), isTrue);
     });
   });
+
+  group('hazard filters that could not be applied', () {
+    final data = [
+      // Coordinates matter: /shelters/clusters drops anything unplottable.
+      shelter(
+        id: 1,
+        name: '核安收容所',
+        nuclear: 'Y',
+        flood: 'Y',
+        x: 121.5265,
+        y: 25.0190,
+      ),
+      shelter(
+        id: 2,
+        name: '一般收容所',
+        nuclear: 'N',
+        flood: 'Y',
+        x: 121.5300,
+        y: 25.0200,
+      ),
+    ];
+
+    test(
+      '?nuclear=Y actually filters instead of returning everything',
+      () async {
+        final res = await get(controllerFor(data), '/shelters?nuclear=Y');
+        expect(res['status'], 200);
+        final body = res['body'] as Map<String, dynamic>;
+        expect(
+          body['total'],
+          1,
+          reason: '核子事故 must be a real filter, not a no-op',
+        );
+        expect((body['data'] as List).single['名稱'], '核安收容所');
+      },
+    );
+
+    test('the Chinese spelling filters identically', () async {
+      final res = await get(controllerFor(data), '/shelters?核子事故=Y');
+      expect((res['body'] as Map)['total'], 1);
+    });
+
+    test('?disasters=nuclear is accepted by the group parameter', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/clusters?zoom=13&disasters=nuclear',
+      );
+      expect(res['status'], 200);
+      final clusters = ((res['body'] as Map)['clusters'] as List);
+      expect(clusters, hasLength(1));
+    });
+
+    // The regression this guards: an unparseable value used to mean "condition
+    // unset", so a typo answered 200 with the whole dataset — indistinguishable
+    // from an unfiltered query, and the caller believed it was filtered.
+    test(
+      'an unknown hazard value is a 400, not a silent full result',
+      () async {
+        final res = await get(controllerFor(data), '/shelters?flood=BOGUS');
+        expect(res['status'], 400);
+        expect((res['body'] as Map)['message'], contains('unknown value'));
+      },
+    );
+
+    test('the same rejection applies on every endpoint', () async {
+      for (final path in [
+        '/shelters?flood=BOGUS',
+        '/shelters/stats?flood=BOGUS',
+        '/shelters/clusters?zoom=13&flood=BOGUS',
+        '/shelters/nearby?lat=25&lng=121.5&flood=BOGUS',
+      ]) {
+        final res = await get(controllerFor(data), path);
+        expect(res['status'], 400, reason: '$path must reject the bad value');
+      }
+    });
+
+    test('N and the yes-aliases stay valid values', () async {
+      for (final path in [
+        '/shelters?flood=N',
+        '/shelters?quake=備用',
+        '/shelters?flood=Y&match=or',
+      ]) {
+        final res = await get(controllerFor(data), path);
+        expect(res['status'], 200, reason: '$path must remain accepted');
+      }
+    });
+  });
 }

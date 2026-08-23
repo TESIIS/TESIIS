@@ -79,6 +79,8 @@ class ShelterService {
         return s.landslide;
       case '海嘯':
         return s.tsunami;
+      case '核子事故':
+        return s.nuclear;
       case '救濟支站':
         return s.relief;
       case '無障礙設施':

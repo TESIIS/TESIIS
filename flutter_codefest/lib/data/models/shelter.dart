@@ -20,6 +20,7 @@ class Shelter {
     required this.earthquake,
     required this.landslide,
     required this.tsunami,
+    required this.nuclear,
     required this.reliefStation,
     required this.accessible,
     required this.indoor,
@@ -53,6 +54,11 @@ class Shelter {
   final String earthquake;
   final String landslide;
   final String tsunami;
+
+  /// 核子事故 — only the nationwide NFA dataset carries this, so it is an
+  /// empty string for anything built before the nationwide expansion.
+  final String nuclear;
+
   final String reliefStation;
   final String accessible;
   final String indoor;
@@ -117,6 +123,7 @@ class Shelter {
       earthquake: _string(json['震災']),
       landslide: _string(json['土石流']),
       tsunami: _string(json['海嘯']),
+      nuclear: _string(json['核子事故']),
       reliefStation: _string(json['救濟支站']),
       accessible: _string(json['無障礙設施']),
       indoor: _string(json['室內']),
@@ -155,6 +162,7 @@ class Shelter {
     '震災': earthquake,
     '土石流': landslide,
     '海嘯': tsunami,
+    '核子事故': nuclear,
     '救濟支站': reliefStation,
     '無障礙設施': accessible,
     '室內': indoor,
