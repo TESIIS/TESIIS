@@ -7,9 +7,9 @@ import type { Page } from '@playwright/test';
 // `Enable accessibility` button for exactly this; clicking it once per page
 // makes `getByText`/`getByRole` locators work against anything the app gives
 // a Text or Semantics/tooltip label.
-async function enableSemantics(page: Page) {
+async function enableSemantics(page: Page, timeout = 30_000) {
   const enableButton = page.getByRole('button', { name: 'Enable accessibility' });
-  await enableButton.waitFor({ state: 'attached', timeout: 30_000 });
+  await enableButton.waitFor({ state: 'attached', timeout });
   // The placeholder is deliberately positioned off-screen until interacted
   // with, so a normal `.click()` fails Playwright's "in viewport"
   // actionability check even with `force`. Dispatching the event directly
@@ -161,6 +161,37 @@ test.describe('shelter web smoke', () => {
 
     await expect(page.getByText('找不到相似的結果')).toBeVisible({
       timeout: 15_000,
+    });
+  });
+
+  test('the app still loads on a throttled connection', async ({ page, context }) => {
+    // The Chinese search-bar text this test waits for can only paint once
+    // CanvasKit *and* the bundled NotoSansTC font (~12MB, confirmed via a
+    // network trace — canvaskit does its own text shaping with no
+    // browser-native font fallback) are both in. Neither nginx.conf's
+    // gzip_types nor a plain static server compresses that font — TTF has no
+    // MIME type in nginx by default, so it isn't on the gzip allowlist and
+    // ships at full size everywhere, this test included. Measured locally at
+    // a 6Mbps/150ms throttle: ~60-70s just for that one file. The timeout
+    // below has real margin over that, measured, not guessed.
+    test.setTimeout(150_000);
+
+    // Network.emulateNetworkConditions is Chromium-only, which matches this
+    // suite's single 'chromium' project in playwright.config.ts.
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Network.enable');
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      downloadThroughput: (6 * 1024 * 1024) / 8, // ~6Mbps
+      uploadThroughput: (6 * 1024 * 1024) / 8,
+      latency: 150,
+    });
+
+    await page.goto('/');
+    await enableSemantics(page);
+
+    await expect(page.getByText('TESIIS 臺灣避難收容所地圖')).toBeVisible({
+      timeout: 120_000,
     });
   });
 });
