@@ -23,6 +23,16 @@ class ApiService {
     defaultValue: 'http://localhost:8080/api',
   );
 
+  /// How long to wait before treating a request as failed.
+  ///
+  /// Every offline fallback in the app — the cached-response path in
+  /// `ShelterMapViewModel`, the "showing cached data" banner — lives in a
+  /// `catch` block, so a request that hangs instead of failing reaches none
+  /// of them: the user gets a spinner that never resolves. On mobile data
+  /// during a disaster that is the exact moment the fallback matters most,
+  /// so failing fast beats waiting indefinitely.
+  static const Duration timeout = Duration(seconds: 15);
+
   static Future<dynamic> get(
     String endpoint, {
     Map<String, String>? queryParams,
@@ -30,7 +40,14 @@ class ApiService {
     final url = Uri.parse(
       '$baseUrl$endpoint',
     ).replace(queryParameters: queryParams);
-    final response = await http.get(url);
+    final response = await http
+        .get(url)
+        .timeout(
+          timeout,
+          onTimeout: () => throw Exception(
+            'GET $endpoint timed out after ${timeout.inSeconds}s',
+          ),
+        );
 
     if (response.statusCode != 200) {
       throw Exception('GET $endpoint failed: ${response.statusCode}');
