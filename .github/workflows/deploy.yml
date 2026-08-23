@@ -1,0 +1,45 @@
+name: Deploy
+
+# SSHes into the production VPS and redeploys after CI passes on master. This
+# exists because the previous process was "someone remembers to SSH in and
+# run docker compose" — which silently didn't happen for the nationwide
+# expansion: the site kept serving pre-expansion Taipei-only data for hours
+# after it was merged and CI was green.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy to tcf.itousouta.me
+    runs-on: ubuntu-latest
+    # Manual runs always proceed; push-triggered runs only proceed if CI
+    # actually passed — a broken commit must not reach production just
+    # because it reached master.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 23.146.248.51
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # compose.override.yml on the host is untracked and stays put —
+          # it's what points the Taipei OpenData fetch through a Cloudflare
+          # Worker proxy and binds the web port to localhost only.
+          script: |
+            set -euo pipefail
+            cd /root/apps/2025Taipei-codefest-team30
+            git fetch origin
+            git reset --hard origin/master
+            docker compose up --build -d
+            docker image prune -f
