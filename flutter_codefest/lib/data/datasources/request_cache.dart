@@ -78,7 +78,15 @@ class RequestCache {
       final kept = <Map<String, dynamic>>[];
       for (final entry in entries) {
         totalChars += (entry['body'] as String).length;
-        if (kept.length >= maxEntries || totalChars > maxTotalChars) break;
+        // `kept.isNotEmpty` is the guard that matters: without it, one
+        // response larger than the whole budget broke on the first iteration
+        // and stored an empty list — evicting every other entry, including
+        // the one being written. Keeping the newest entry alone is the
+        // correct LRU outcome for that case.
+        if (kept.isNotEmpty &&
+            (kept.length >= maxEntries || totalChars > maxTotalChars)) {
+          break;
+        }
         kept.add(entry);
       }
 

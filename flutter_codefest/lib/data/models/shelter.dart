@@ -72,9 +72,11 @@ class Shelter {
   final String managerPhone;
   final String remarks;
 
-  /// 座標y. Null for the shelters the coordinate table could not locate —
-  /// about 8% of the dataset, mostly parks and intersections whose 門牌地址 is
-  /// a description rather than an address.
+  /// 座標y. Nullable because the wire format allows it, but every shelter in
+  /// the nationwide dataset has an exact coordinate: the NFA point file
+  /// carries WGS84 columns of its own, and a row that fails the per-county
+  /// bounds check is dropped rather than kept without one. The ~8% gap this
+  /// once described belonged to the retired Taipei address-join pipeline.
   final double? latitude;
 
   /// 座標x.

@@ -29,17 +29,28 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          # The SHA whose CI run triggered this. A manual dispatch has no such
+          # run, so it falls back to the ref it was aimed at.
+          DEPLOY_SHA: >-
+            ${{ github.event.workflow_run.head_sha || github.sha }}
         with:
           host: 23.146.248.176
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: DEPLOY_SHA
           # compose.override.yml on the host is untracked and stays put —
           # it's what points the Taipei OpenData fetch through a Cloudflare
           # Worker proxy and binds the web port to localhost only.
+          #
+          # Checking out the SHA CI actually verified, rather than resolving
+          # origin/master on the host: a second push landing while a deploy
+          # was in flight used to ship a commit whose own CI had not finished,
+          # or had failed outright.
           script: |
             set -euo pipefail
             cd /root/apps/2025Taipei-codefest-team30
             git fetch origin
-            git reset --hard origin/master
+            git checkout --force "$DEPLOY_SHA"
             docker compose up --build -d
             docker image prune -f

@@ -90,4 +90,23 @@ void main() {
     await RequestCache.put('anything', {'ok': true});
     expect(await RequestCache.get('anything'), isNotNull);
   });
+
+  test(
+    'an entry larger than the whole budget does not wipe the cache',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      await RequestCache.put('small', {'n': 1});
+
+      // One response bigger than maxTotalChars used to break the retention
+      // loop on its first iteration, storing an empty list — evicting every
+      // other entry *and* the oversized one being written, so a single large
+      // viewport silently emptied the offline fallback.
+      final huge = 'x' * (RequestCache.maxTotalChars + 1000);
+      await RequestCache.put('huge', {'blob': huge});
+
+      final restored = await RequestCache.get('huge');
+      expect(restored, isNotNull, reason: 'the newest entry must survive');
+      expect((restored!.body['blob'] as String).length, huge.length);
+    },
+  );
 }
