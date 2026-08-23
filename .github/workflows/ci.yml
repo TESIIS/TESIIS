@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - run: npm ci
       - run: npx playwright install --with-deps chromium
@@ -124,9 +124,21 @@ jobs:
         with:
           # gitleaks needs history to scan commits, not just the tree.
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      # gitleaks-action@v2 now requires a commercial license. Keep the scan
+      # free and reproducible by using the last MIT-licensed CLI release.
+      - name: Install Gitleaks
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.18.4
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            --output /tmp/gitleaks.tar.gz
+          tar --extract --gzip --file /tmp/gitleaks.tar.gz --directory /tmp
+          install --mode=0755 /tmp/gitleaks /usr/local/bin/gitleaks
+
+      - name: Scan Git history for secrets
+        run: gitleaks detect --source . --no-banner --redact
 
       # Belt and braces: fail if a file that must never ship gets committed,
       # even if it contains nothing gitleaks recognises as a secret.
