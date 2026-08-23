@@ -25,6 +25,7 @@ Map<String, dynamic> serverRow({
   '震災': 'Y',
   '土石流': 'N',
   '海嘯': 'N',
+  '核子事故': 'Y',
   '救濟支站': 'Y',
   '無障礙設施': 'Y',
   '室內': 'Y',
@@ -121,6 +122,25 @@ void main() {
       expect(again.latitude, shelter.latitude);
       expect(again.longitude, shelter.longitude);
       expect(again.serviceVillages, shelter.serviceVillages);
+    });
+  });
+
+  group('核子事故', () {
+    test('is parsed from the server row', () {
+      expect(Shelter.fromJson(serverRow()).nuclear, 'Y');
+    });
+
+    // The regression this guards: the field shipped in every server response
+    // but had no home on this side, so it was dropped on parse — and with it
+    // any chance of filtering or displaying it.
+    test('survives the cache round-trip', () {
+      final again = Shelter.fromJson(Shelter.fromJson(serverRow()).toJson());
+      expect(again.nuclear, 'Y');
+    });
+
+    test('is empty rather than null when the server omits it', () {
+      final row = serverRow()..remove('核子事故');
+      expect(Shelter.fromJson(row).nuclear, '');
     });
   });
 }
