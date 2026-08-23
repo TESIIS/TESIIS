@@ -46,11 +46,20 @@ class MapConstants {
   static const double maxZoom = 19;
 
   /// Search radius for fetching the individual members of a cluster that's
-  /// still grouped at [maxZoom]. Wider than the grid cell clustering ever
-  /// produces at that zoom (tens of metres) so it reliably catches every
-  /// member, while still tight enough not to pull in unrelated shelters from
-  /// a neighbouring cluster.
-  static const double clusterExpandRadiusMeters = 250;
+  /// still grouped at [maxZoom].
+  ///
+  /// Derived from the grid rather than guessed. At zoom 19 a cell is
+  /// 360 / (256·2^19) × 80 degrees of longitude — about 21.6 m at Taiwan's
+  /// latitudes, and square once the latitude conversion is right — so no
+  /// member can sit more than one diagonal (~30.5 m) from the centroid. 60 m
+  /// clears that with room to spare.
+  ///
+  /// The previous 250 m was an order of magnitude wider than the cell it was
+  /// meant to cover, so `/shelters/nearby` reached well into the neighbouring
+  /// cells — which are separate clusters — and, because the request asks for
+  /// exactly `cluster.count` results, a closer non-member could displace a
+  /// real member from the sheet.
+  static const double clusterExpandRadiusMeters = 60;
 
   /// Zoom level for the fallback nationwide view (`taiwanCenter`).
   static const double nationwideZoom = 7.5;
