@@ -23,6 +23,8 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colorScheme.surface,
+      // Bundled locally — see the `fonts:` comment in pubspec.yaml for why.
+      fontFamily: 'Noto Sans TC',
       extensions: [AppStatusColors.forBrightness(brightness)],
     );
   }

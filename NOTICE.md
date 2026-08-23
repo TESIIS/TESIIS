@@ -85,6 +85,10 @@ App 的「開始導航」按鈕以 `url_launcher` 開啟 `https://www.google.com
 | `get_it` | MIT |
 | `http` / `logging` | BSD-3-Clause |
 
+### 字型
+
+`flutter_codefest/assets/fonts/NotoSansTC.ttf` 是 Google Noto Sans TC（可變字重字型），隨 app 打包以避免 Web 版 CanvasKit 在執行期向 Google 字型 CDN 現抓中文字型造成的白屏／缺字。授權為 **SIL Open Font License 1.1**，全文見同目錄 `OFL.txt`。
+
 ---
 
 ## 四、資料正確性聲明

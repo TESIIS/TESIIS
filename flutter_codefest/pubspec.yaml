@@ -87,22 +87,24 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
-  # fonts:
-  #   - family: Schyler
-  #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
-  #       - asset: fonts/Schyler-Italic.ttf
-  #         style: italic
-  #   - family: Trajan Pro
-  #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
-  #         weight: 700
+  # Bundled so CJK glyphs are available offline and at first paint. Without
+  # this, CanvasKit on web fetches a Noto CJK fallback from Google's font CDN
+  # the first time it needs to shape Chinese text — the UI (almost entirely
+  # Traditional Chinese) renders blank/tofu until that request lands. One
+  # variable-font file covers weights 100-900; each entry below just points
+  # Flutter at the instance to select via the font's `wght` axis. License:
+  # assets/fonts/OFL.txt (SIL Open Font License 1.1).
+  fonts:
+    - family: Noto Sans TC
+      fonts:
+        - asset: assets/fonts/NotoSansTC.ttf
+          weight: 400
+        - asset: assets/fonts/NotoSansTC.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansTC.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSansTC.ttf
+          weight: 700
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

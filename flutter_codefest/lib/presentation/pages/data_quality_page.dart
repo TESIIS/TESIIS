@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/data/models/region_coordinate_stats.dart';
 import 'package:flutter_codefest/presentation/viewmodels/data_quality_view_model.dart';
 
@@ -66,12 +67,96 @@ class _DataQualityPageState extends State<DataQualityPage> {
       return const Center(child: Text('沒有資料'));
     }
 
+    final isDesktop =
+        MediaQuery.sizeOf(context).width >= MapConstants.desktopBreakpoint;
+    final townships = _viewModel.filteredTownships;
+
+    return Column(
+      children: [
+        _CityFilterBar(
+          cities: _viewModel.cities,
+          selectedCity: _viewModel.selectedCity,
+          onSelect: _viewModel.selectCity,
+        ),
+        Expanded(
+          child: townships.isEmpty
+              ? const Center(child: Text('這個縣市沒有資料'))
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: isDesktop
+                        ? _buildGrid(townships)
+                        : _buildList(townships),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildList(List<RegionCoordinateStats> townships) {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _viewModel.townships.length,
+      itemCount: townships.length,
       separatorBuilder: (context, _) => const SizedBox(height: 8),
-      itemBuilder: (context, index) =>
-          _TownshipTile(stats: _viewModel.townships[index]),
+      itemBuilder: (context, index) => _TownshipTile(stats: townships[index]),
+    );
+  }
+
+  Widget _buildGrid(List<RegionCoordinateStats> townships) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 420,
+        mainAxisExtent: 108,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: townships.length,
+      itemBuilder: (context, index) => _TownshipTile(stats: townships[index]),
+    );
+  }
+}
+
+/// City picker for the data-quality page — a wrapping row of choice chips
+/// rather than `FilterChipBar`'s horizontal scroller, since there are ~20+
+/// counties/cities and wrapping reads better than a long scroll on desktop.
+class _CityFilterBar extends StatelessWidget {
+  const _CityFilterBar({
+    required this.cities,
+    required this.selectedCity,
+    required this.onSelect,
+  });
+
+  final List<String> cities;
+  final String? selectedCity;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      color: colorScheme.surface,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          ChoiceChip(
+            label: const Text('全部'),
+            selected: selectedCity == null,
+            onSelected: (_) => onSelect(null),
+          ),
+          for (final city in cities)
+            ChoiceChip(
+              label: Text(city),
+              selected: selectedCity == city,
+              onSelected: (_) => onSelect(selectedCity == city ? null : city),
+            ),
+        ],
+      ),
     );
   }
 }
