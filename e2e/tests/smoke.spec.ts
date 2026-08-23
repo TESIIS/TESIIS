@@ -87,7 +87,7 @@ test.describe('shelter web smoke', () => {
     await expect(page).toHaveTitle('臺灣避難收容處所資訊整合系統');
     await enableSemantics(page);
 
-    await expect(page.getByText('全臺避難設施地圖')).toBeVisible({
+    await expect(page.getByText('全國避難設施地圖')).toBeVisible({
       timeout: 15_000,
     });
   });

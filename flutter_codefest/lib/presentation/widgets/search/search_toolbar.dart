@@ -104,7 +104,7 @@ class SearchToolbar extends StatelessWidget {
                         horizontal: 12,
                       ),
                       child: Text(
-                        '全臺避難設施地圖',
+                        'TESIIS 臺灣避難收容處所地圖',
                         style: TextStyle(
                           color: colorScheme.primary,
                           fontSize: 18,

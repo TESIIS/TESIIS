@@ -1,11 +1,11 @@
 {
     "name": "臺灣避難收容處所資訊整合系統",
-    "short_name": "全臺避難設施地圖",
+    "short_name": "全國避難設施地圖",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#F4FBFC",
     "theme_color": "#5AB4C5",
-    "description": "全臺避難設施地圖、災害類型篩選與鄰近收容處所查詢",
+    "description": "全國避難設施地圖、災害類型篩選與鄰近收容處所查詢",
     "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
