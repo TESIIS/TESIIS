@@ -4,22 +4,35 @@ import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// The result-count summary plus the scrollable list of matching shelters
-/// shown under the search bar.
+/// shown under the search bar. Loads the next page when scrolled to the
+/// bottom while [hasMore].
 class SearchResultsList extends StatelessWidget {
   const SearchResultsList({
     super.key,
     required this.shelters,
+    required this.total,
+    required this.hasMore,
+    required this.isLoadingMore,
     required this.hasFilters,
     required this.currentPosition,
     required this.selectedShelter,
     required this.onSelect,
+    required this.onLoadMore,
   });
 
   final List<Shelter> shelters;
+
+  /// How many shelters matched before paging — what the header shows, so it
+  /// reads "共 200 筆" while only the first page is in memory.
+  final int total;
+
+  final bool hasMore;
+  final bool isLoadingMore;
   final bool hasFilters;
   final Position? currentPosition;
   final Shelter? selectedShelter;
   final ValueChanged<Shelter> onSelect;
+  final VoidCallback onLoadMore;
 
   @override
   Widget build(BuildContext context) {
@@ -30,23 +43,46 @@ class SearchResultsList extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _ResultSummary(shelters: shelters),
+        _ResultSummary(shelters: shelters, total: total),
         Flexible(
-          child: ListView.separated(
-            shrinkWrap: true,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: shelters.length,
-            separatorBuilder: (context, index) =>
-                const Divider(height: 1, indent: 16, endIndent: 16),
-            itemBuilder: (context, index) {
-              final shelter = shelters[index];
-              return _ShelterResultTile(
-                shelter: shelter,
-                isSelected: selectedShelter?.name == shelter.name,
-                currentPosition: currentPosition,
-                onTap: () => onSelect(shelter),
-              );
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (!hasMore ||
+                  isLoadingMore ||
+                  notification.metrics.extentAfter > 200) {
+                return false;
+              }
+              onLoadMore();
+              return false;
             },
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: shelters.length + (hasMore ? 1 : 0),
+              separatorBuilder: (context, index) =>
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+              itemBuilder: (context, index) {
+                if (index == shelters.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+                final shelter = shelters[index];
+                return _ShelterResultTile(
+                  shelter: shelter,
+                  isSelected: selectedShelter?.name == shelter.name,
+                  currentPosition: currentPosition,
+                  onTap: () => onSelect(shelter),
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -95,14 +131,16 @@ class _EmptyState extends StatelessWidget {
 /// Without this the list and the map disagree — a search can return 30 hits
 /// while only 28 pins appear — and the user has no way to know why.
 class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({required this.shelters});
+  const _ResultSummary({required this.shelters, required this.total});
 
   final List<Shelter> shelters;
+  final int total;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final missing = shelters.where((s) => !s.hasCoordinate).length;
+    final hasMore = shelters.length < total;
 
     return Container(
       width: double.infinity,
@@ -110,7 +148,7 @@ class _ResultSummary extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '共 ${shelters.length} 筆',
+            hasMore ? '共 $total 筆（已載入 ${shelters.length} 筆）' : '共 $total 筆',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,

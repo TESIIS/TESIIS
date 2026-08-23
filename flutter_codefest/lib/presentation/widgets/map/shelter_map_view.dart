@@ -4,15 +4,14 @@ import 'package:flutter_codefest/core/map/basemap.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-/// The full-screen `FlutterMap`: tiles, the "nearby" radius circle, shelter
-/// markers, and the required NLSC attribution.
+/// The full-screen `FlutterMap`: tiles, shelter markers, and the required
+/// NLSC attribution.
 class ShelterMapView extends StatelessWidget {
   const ShelterMapView({
     super.key,
     required this.mapController,
     required this.basemap,
     required this.markers,
-    required this.circles,
     required this.onMapReady,
     required this.onPositionChanged,
     required this.onTap,
@@ -21,7 +20,6 @@ class ShelterMapView extends StatelessWidget {
   final MapController mapController;
   final Basemap basemap;
   final List<Marker> markers;
-  final List<CircleMarker> circles;
   final VoidCallback onMapReady;
   final void Function(MapCamera camera, bool hasGesture) onPositionChanged;
   final void Function(TapPosition tapPosition, LatLng point) onTap;
@@ -41,7 +39,6 @@ class ShelterMapView extends StatelessWidget {
       ),
       children: [
         basemapTileLayer(basemap),
-        CircleLayer(circles: circles),
         MarkerLayer(markers: markers),
         // Required by the NLSC terms of use wherever their tiles are shown.
         const RichAttributionWidget(

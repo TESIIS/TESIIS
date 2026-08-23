@@ -49,7 +49,6 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _viewModel = ShelterMapViewModel();
-    _viewModel.loadShelters();
     _handleLocate();
   }
 
@@ -68,8 +67,9 @@ class _MapPageState extends State<MapPage> {
 
   void _onMapReady() {
     _isMapReady = true;
-    _viewModel.updateVisibleShelters(
-      _viewModel.currentLatLng ?? MapConstants.taiwanCenter,
+    _viewModel.loadClusters(
+      _mapController.camera.visibleBounds,
+      _mapController.camera.zoom,
     );
   }
 
@@ -79,7 +79,7 @@ class _MapPageState extends State<MapPage> {
     _idleTimer?.cancel();
     _idleTimer = Timer(MapConstants.idleDebounce, () {
       if (!mounted || _viewModel.isSearching) return;
-      _viewModel.updateVisibleShelters(camera.center);
+      _viewModel.loadClusters(camera.visibleBounds, camera.zoom);
     });
   }
 
@@ -187,23 +187,16 @@ class _MapPageState extends State<MapPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final vm = _viewModel;
 
-    final circles = vm.visibleCenter == null
-        ? const <CircleMarker>[]
-        : [
-            CircleMarker(
-              point: vm.visibleCenter!,
-              radius: MapConstants.visibleRadiusMeters,
-              useRadiusInMeter: true,
-              color: colorScheme.primary.withValues(alpha: 0.15),
-              borderColor: colorScheme.primary.withValues(alpha: 0.5),
-              borderStrokeWidth: 2,
-            ),
-          ];
-
-    final clusters = clusterShelters([
-      for (final s in vm.markerShelters)
-        if (s.hasCoordinate) s,
-    ], zoom: _isMapReady ? _mapController.camera.zoom : 12.0);
+    // Markers come from the server's per-viewport cluster endpoint while
+    // browsing; during a search the current result page is clustered
+    // client-side so the pins track exactly what the list shows.
+    final zoom = _isMapReady ? _mapController.camera.zoom : 12.0;
+    final clusters = vm.isSearching
+        ? clusterShelters([
+            for (final s in vm.searchResults)
+              if (s.hasCoordinate) s,
+          ], zoom: zoom)
+        : vm.clusters;
     final markers = buildShelterMarkers(
       clusters: clusters,
       selectedShelter: vm.selectedShelter,
@@ -220,10 +213,6 @@ class _MapPageState extends State<MapPage> {
 
     final hasFilters =
         vm.selectedDisasterTypes.isNotEmpty || vm.selectedSpaceTypes.isNotEmpty;
-    final hasSearchText = _searchController.text.isNotEmpty;
-    final resultList = (hasFilters || hasSearchText)
-        ? vm.filteredShelters
-        : vm.nearbyShelters;
 
     final isWide =
         MediaQuery.of(context).size.width >= MapConstants.desktopBreakpoint;
@@ -235,7 +224,6 @@ class _MapPageState extends State<MapPage> {
             mapController: _mapController,
             basemap: vm.basemap,
             markers: markers,
-            circles: circles,
             onMapReady: _onMapReady,
             onPositionChanged: _onPositionChanged,
             onTap: _onMapTap,
@@ -345,7 +333,10 @@ class _MapPageState extends State<MapPage> {
                           elevation: 6,
                           clipBehavior: Clip.antiAlias,
                           child: SearchResultsList(
-                            shelters: resultList,
+                            shelters: vm.searchResults,
+                            total: vm.searchTotal,
+                            hasMore: vm.searchHasMore,
+                            isLoadingMore: vm.isLoadingMore,
                             hasFilters: hasFilters,
                             currentPosition: vm.currentPosition,
                             selectedShelter: vm.selectedShelter,
@@ -353,6 +344,7 @@ class _MapPageState extends State<MapPage> {
                               _onMarkerTapped(shelter);
                               _toggleSearch();
                             },
+                            onLoadMore: vm.loadMoreSearch,
                           ),
                         ),
                       )

@@ -6,17 +6,51 @@ import 'package:latlong2/latlong.dart';
 /// One marker's worth of shelters — a single shelter when [isSingle], or a
 /// group close enough together at the current zoom to draw as one.
 class ShelterCluster {
-  const ShelterCluster({required this.center, required this.members});
+  const ShelterCluster({
+    required this.center,
+    required this.members,
+    int? count,
+  }) : count = count ?? members.length;
 
   final LatLng center;
   final List<Shelter> members;
 
-  bool get isSingle => members.length == 1;
-  int get count => members.length;
+  /// Member count. Multi-member clusters built from server data carry the
+  /// count in the payload but no members (the whole point of the clusters
+  /// endpoint is that members are not transferred), hence the override.
+  final int count;
+
+  bool get isSingle => count == 1;
 
   /// A single-member cluster's shelter, for tap handling. Only valid when
   /// [isSingle].
   Shelter get single => members.single;
+
+  /// A cluster as returned by `GET /shelters/clusters`: single-member
+  /// clusters arrive with their full shelter embedded, multi-member ones
+  /// with just a centroid and count.
+  factory ShelterCluster.fromServerJson(Map<String, dynamic> json) {
+    final shelterJson = json['shelter'] as Map<String, dynamic>?;
+    return ShelterCluster(
+      center: LatLng(
+        (json['lat'] as num).toDouble(),
+        (json['lng'] as num).toDouble(),
+      ),
+      members: shelterJson == null
+          ? const []
+          : [Shelter.fromJson(shelterJson)],
+      count: (json['count'] as num).toInt(),
+    );
+  }
+
+  /// Serialises back into the server's wire shape, so cached cluster
+  /// responses can be stored and re-read with [fromServerJson].
+  Map<String, dynamic> toJson() => {
+    'count': count,
+    'lat': center.latitude,
+    'lng': center.longitude,
+    if (isSingle) 'shelter': single.toJson(),
+  };
 }
 
 /// Grid-buckets [shelters] (which must all have a coordinate) into clusters

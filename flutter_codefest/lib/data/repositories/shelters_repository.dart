@@ -1,64 +1,69 @@
 import 'package:flutter_codefest/data/datasources/api.dart';
-import 'package:flutter_codefest/data/models/api_response.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
+import 'package:flutter_codefest/data/models/shelter_page.dart';
+import 'package:flutter_codefest/domain/marker_clustering.dart';
 
-List<Shelter> _parseShelters(dynamic response) {
-  return ApiResponse<List<Shelter>>.fromJson(
-    response,
-    (json) => (json as List<dynamic>)
-        .map((e) => Shelter.fromJson(e as Map<String, dynamic>))
-        .toList(),
-  ).data;
+/// Query parameters for one `GET /shelters/clusters` request.
+///
+/// Kept as a plain map (not a typed call) so the view model can reuse the
+/// exact same map as the cache key — see `RequestCache.keyFor` — without
+/// the two ever drifting apart. [bbox] is the raw
+/// `minLng,minLat,maxLng,maxLat` string; pass null for "the whole country".
+Map<String, String> clustersQueryParams({
+  String? bbox,
+  required double zoom,
+  Set<String>? disasters,
+  Set<String>? spaces,
+}) => {
+  if (bbox != null) 'bbox': bbox,
+  // Whole-number zooms without the trailing ".0" — the cache key must be
+  // stable across clients that format the same zoom differently.
+  'zoom': zoom == zoom.truncateToDouble() ? '${zoom.toInt()}' : '$zoom',
+  if (disasters != null && disasters.isNotEmpty)
+    'disasters': disasters.join(','),
+  if (spaces != null && spaces.isNotEmpty) 'spaces': spaces.join(','),
+};
+
+/// Grid-clustered markers for a map viewport.
+///
+/// The server groups shelters into count bubbles (single-member clusters
+/// embed the full shelter), so a country-wide view transfers a few hundred
+/// centroids instead of ~5,850 records. Omit `bbox` for "the whole country" —
+/// the clusters endpoint deliberately has no 2° bbox cap.
+Future<List<ShelterCluster>> fetchClusters(Map<String, String> params) async {
+  final body = await ApiService.get(
+    '/shelters/clusters',
+    queryParams: params,
+  ) as Map<String, dynamic>;
+  return [
+    for (final cluster in body['clusters'] as List<dynamic>? ?? const [])
+      ShelterCluster.fromServerJson(cluster as Map<String, dynamic>),
+  ];
 }
 
-Future<List<Shelter>> fetchAllShelters() async =>
-    _parseShelters(await ApiService.get('/shelters'));
-
-Future<List<Shelter>> fetchFilteredShelters({
+/// Query parameters for one page of `GET /shelters`.
+Map<String, String> sheltersPageQueryParams({
   String? q,
-  String? city,
-  String? township,
-  String? village,
-  String? type,
-  String match = 'and',
-  String? flood,
-  String? quake,
-  String? landslide,
-  String? tsunami,
-  String? relief,
-  String? accessible,
-  String? indoor,
-  String? outdoor,
-}) async {
-  final queryParams = <String, String>{
-    if (q != null && q.isNotEmpty) 'q': q,
-    if (city != null) 'city': city,
-    if (township != null) 'township': township,
-    if (village != null) 'village': village,
-    if (type != null) 'type': type,
-    'match': match,
-  };
+  Set<String>? disasters,
+  Set<String>? spaces,
+  required int limit,
+  required int offset,
+}) => {
+  if (q != null && q.isNotEmpty) 'q': q,
+  if (disasters != null && disasters.isNotEmpty)
+    'disasters': disasters.join(','),
+  if (spaces != null && spaces.isNotEmpty) 'spaces': spaces.join(','),
+  'limit': '$limit',
+  'offset': '$offset',
+};
 
-  // Hazard conditions go over the wire as 'Y'.
-  //
-  // This used to send the string 'true'. The server happened to accept it, but
-  // it is not what the API documents and it made ?quake=備用 — which asks for
-  // that variant specifically — impossible to express. Pass the value through.
-  <String, String?>{
-    'flood': flood,
-    'quake': quake,
-    'landslide': landslide,
-    'tsunami': tsunami,
-    'relief': relief,
-    'accessible': accessible,
-    'indoor': indoor,
-    'outdoor': outdoor,
-  }.forEach((key, value) {
-    if (value != null && value.isNotEmpty) queryParams[key] = value;
-  });
-
-  return _parseShelters(
-    await ApiService.get('/shelters', queryParams: queryParams),
+/// One page of shelters, matching the search text and filter groups
+/// **server-side** — the client no longer downloads the whole dataset to
+/// filter a few hundred rows out of it.
+Future<ShelterPage> fetchSheltersPage(Map<String, String> params) async {
+  return ShelterPage.fromJson(
+    await ApiService.get('/shelters', queryParams: params)
+        as Map<String, dynamic>,
   );
 }
 
@@ -73,17 +78,19 @@ Future<List<Shelter>> fetchNearbyShelters({
   double? radiusMeters,
   int limit = 10,
 }) async {
-  return _parseShelters(
-    await ApiService.get(
-      '/shelters/nearby',
-      queryParams: {
-        'lat': '$lat',
-        'lng': '$lng',
-        if (radiusMeters != null) 'radius': '$radiusMeters',
-        'limit': '$limit',
-      },
-    ),
-  );
+  final body = await ApiService.get(
+    '/shelters/nearby',
+    queryParams: {
+      'lat': '$lat',
+      'lng': '$lng',
+      if (radiusMeters != null) 'radius': '$radiusMeters',
+      'limit': '$limit',
+    },
+  ) as Map<String, dynamic>;
+  return [
+    for (final entry in body['data'] as List<dynamic>? ?? const [])
+      Shelter.fromJson(entry as Map<String, dynamic>),
+  ];
 }
 
 /// Raw `GET /shelters/stats` body, including the per-region coordinate

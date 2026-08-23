@@ -3,26 +3,35 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/map/basemap.dart';
-import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
-import 'package:flutter_codefest/data/datasources/shelter_cache.dart';
+import 'package:flutter_codefest/data/datasources/request_cache.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
+import 'package:flutter_codefest/data/models/shelter_page.dart';
 import 'package:flutter_codefest/data/repositories/shelters_repository.dart'
     as repo;
+import 'package:flutter_codefest/domain/marker_clustering.dart';
 import 'package:flutter_codefest/domain/shelter_filters.dart';
+import 'package:flutter_map/flutter_map.dart' show LatLngBounds;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-typedef FetchAllShelters = Future<List<Shelter>> Function();
-typedef FetchFilteredShelters = Future<List<Shelter>> Function({String? q});
+typedef FetchClusters = Future<List<ShelterCluster>> Function(
+  Map<String, String> params,
+);
+typedef FetchShelterPage = Future<ShelterPage> Function(
+  Map<String, String> params,
+);
+typedef FetchNearbyShelters = Future<List<Shelter>> Function({
+  required double lat,
+  required double lng,
+  double? radiusMeters,
+  int limit,
+});
 typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
 typedef RequestPermission = Future<LocationPermission> Function();
 typedef GetCurrentPosition = Future<Position> Function();
-typedef CacheShelters = Future<void> Function(List<Shelter> shelters);
-typedef LoadCachedShelters = Future<CachedShelters?> Function();
-
-Future<List<Shelter>> _defaultFetchFilteredShelters({String? q}) =>
-    repo.fetchFilteredShelters(q: q);
+typedef CacheGet = Future<CachedResponse?> Function(String key);
+typedef CachePut = Future<void> Function(String key, Map<String, dynamic> body);
 
 Future<Position> _defaultGetCurrentPosition() =>
     Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
@@ -30,46 +39,55 @@ Future<Position> _defaultGetCurrentPosition() =>
 /// Holds every piece of mutable state the map screen used to keep in its
 /// `State` object, plus the logic that used to live in its methods.
 ///
-/// The `MapController` and the idle-debounce `Timer` are framework/lifecycle
-/// objects tied to the widget tree, so they stay in `MapPage`'s State rather
-/// than here — this class only holds data and pure state transitions.
+/// The map no longer holds the full ~5,850-shelter dataset: markers come
+/// from the server's `/shelters/clusters` endpoint per viewport, search
+/// results are paginated server-side, and the nearby panel uses
+/// `/shelters/nearby`. The old full-list fetch (and its multi-megabyte
+/// localStorage cache) is gone entirely.
 class ShelterMapViewModel extends ChangeNotifier {
   ShelterMapViewModel({
-    FetchAllShelters fetchAllShelters = repo.fetchAllShelters,
-    FetchFilteredShelters fetchFilteredShelters = _defaultFetchFilteredShelters,
+    FetchClusters fetchClusters = repo.fetchClusters,
+    FetchShelterPage fetchShelterPage = repo.fetchSheltersPage,
+    FetchNearbyShelters fetchNearby = repo.fetchNearbyShelters,
     IsLocationServiceEnabled isLocationServiceEnabled =
         Geolocator.isLocationServiceEnabled,
     CheckPermission checkPermission = Geolocator.checkPermission,
     RequestPermission requestPermission = Geolocator.requestPermission,
     GetCurrentPosition getCurrentPosition = _defaultGetCurrentPosition,
-    CacheShelters cacheShelters = ShelterCache.save,
-    LoadCachedShelters loadCachedShelters = ShelterCache.load,
-  }) : _fetchAllShelters = fetchAllShelters,
-       _fetchFilteredShelters = fetchFilteredShelters,
+    CacheGet cacheGet = RequestCache.get,
+    CachePut cachePut = RequestCache.put,
+  }) : _fetchClusters = fetchClusters,
+       _fetchShelterPage = fetchShelterPage,
+       _fetchNearby = fetchNearby,
        _isLocationServiceEnabled = isLocationServiceEnabled,
        _checkPermission = checkPermission,
        _requestPermission = requestPermission,
        _getCurrentPosition = getCurrentPosition,
-       _cacheShelters = cacheShelters,
-       _loadCachedShelters = loadCachedShelters;
+       _cacheGet = cacheGet,
+       _cachePut = cachePut;
 
-  final FetchAllShelters _fetchAllShelters;
-  final FetchFilteredShelters _fetchFilteredShelters;
+  final FetchClusters _fetchClusters;
+  final FetchShelterPage _fetchShelterPage;
+  final FetchNearbyShelters _fetchNearby;
   final IsLocationServiceEnabled _isLocationServiceEnabled;
   final CheckPermission _checkPermission;
   final RequestPermission _requestPermission;
   final GetCurrentPosition _getCurrentPosition;
-  final CacheShelters _cacheShelters;
-  final LoadCachedShelters _loadCachedShelters;
+  final CacheGet _cacheGet;
+  final CachePut _cachePut;
 
   Timer? _messageDismissTimer;
 
-  List<Shelter> _shelters = const [];
-  List<Shelter> _visibleShelters = const [];
-  LatLng? _visibleCenter;
-  List<Shelter> _filteredShelters = const [];
-  List<Shelter> _searchResults = const [];
+  /// How many search results one page carries.
+  static const searchPageSize = 50;
+
+  List<ShelterCluster> _clusters = const [];
   List<Shelter> _nearbyShelters = const [];
+  List<Shelter> _searchResults = const [];
+  int _searchTotal = 0;
+  int _searchOffset = 0;
+  bool _searchHasMore = false;
+  bool _isLoadingMore = false;
   String _searchQuery = '';
 
   Position? _currentPosition;
@@ -89,23 +107,26 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool _isShowingCachedData = false;
   DateTime? _cachedAt;
 
+  /// Monotonic ids guarding the async fetch paths: a response that arrives
+  /// after the user has moved on (panned again, typed a new query) is a
+  /// stale answer and must not overwrite newer state.
+  int _clusterRequestId = 0;
+  int _searchRequestId = 0;
+
+  LatLngBounds? _lastBounds;
+  double _lastZoom = MapConstants.nationwideZoom;
+
   // ---------------------------------------------------------------------
   // Read-only state
   // ---------------------------------------------------------------------
 
-  List<Shelter> get shelters => _shelters;
-  List<Shelter> get visibleShelters => _visibleShelters;
-  LatLng? get visibleCenter => _visibleCenter;
-  List<Shelter> get filteredShelters => _filteredShelters;
-  List<Shelter> get searchResults => _searchResults;
+  List<ShelterCluster> get clusters => _clusters;
   List<Shelter> get nearbyShelters => _nearbyShelters;
+  List<Shelter> get searchResults => _searchResults;
+  int get searchTotal => _searchTotal;
+  bool get searchHasMore => _searchHasMore;
+  bool get isLoadingMore => _isLoadingMore;
   String get searchQuery => _searchQuery;
-
-  /// Shelters that should currently be pinned on the map.
-  List<Shelter> get markerShelters =>
-      _isSearching && _filteredShelters.isNotEmpty
-      ? _filteredShelters
-      : _visibleShelters;
 
   Position? get currentPosition => _currentPosition;
   LatLng? get currentLatLng => _currentPosition == null
@@ -131,52 +152,70 @@ class ShelterMapViewModel extends ChangeNotifier {
   DateTime? get cachedAt => _cachedAt;
 
   // ---------------------------------------------------------------------
-  // Loading
+  // Map clusters
   // ---------------------------------------------------------------------
 
-  Future<void> loadShelters() async {
+  /// Fetches clustered markers for the visible viewport. [bounds] is the
+  /// current camera bounds; a viewport wider than the server's 6° bbox cap
+  /// (i.e. zoomed way out past the country) is sent as "everything".
+  ///
+  /// On failure, falls back to the cached response for this exact viewport
+  /// and flags it via [isShowingCachedData]; with neither, the markers are
+  /// cleared — stale pins from a previous viewport are worse than none.
+  Future<void> loadClusters(LatLngBounds? bounds, double zoom) async {
+    _lastBounds = bounds;
+    _lastZoom = zoom;
+    final id = ++_clusterRequestId;
+
+    final oversize =
+        bounds != null &&
+        ((bounds.east - bounds.west) > 6.0 ||
+            (bounds.north - bounds.south) > 6.0);
+    final capped = oversize ? null : bounds;
+    final bbox = capped == null
+        ? null
+        : '${capped.west},${capped.south},${capped.east},${capped.north}';
+    final params = repo.clustersQueryParams(
+      bbox: bbox,
+      zoom: zoom,
+      disasters: _selectedDisasterTypes.isEmpty
+          ? null
+          : _selectedDisasterTypes,
+      spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
+    );
+    final key = RequestCache.keyFor('/shelters/clusters', params);
+
     try {
-      _shelters = await _fetchAllShelters();
+      final clusters = await _fetchClusters(params);
+      if (id != _clusterRequestId) return;
+      _clusters = clusters;
       _isShowingCachedData = false;
       _cachedAt = null;
-      updateVisibleShelters(currentLatLng ?? MapConstants.taiwanCenter);
-      unawaited(_cacheShelters(_shelters));
+      unawaited(_cachePut(key, {'clusters': [for (final c in clusters) c.toJson()]}));
+      notifyListeners();
     } catch (_) {
-      final cached = await _loadCachedShelters();
-      if (cached != null && cached.shelters.isNotEmpty) {
-        _shelters = cached.shelters;
+      final cached = await _cacheGet(key);
+      if (id != _clusterRequestId) return;
+      if (cached != null) {
+        _clusters = [
+          for (final c in cached.body['clusters'] as List<dynamic>? ??
+              const <dynamic>[])
+            ShelterCluster.fromServerJson(c as Map<String, dynamic>),
+        ];
         _isShowingCachedData = true;
         _cachedAt = cached.cachedAt;
-        updateVisibleShelters(currentLatLng ?? MapConstants.taiwanCenter);
-        return;
+      } else {
+        _clusters = const [];
+        _locationMessage = '無法連線到伺服器,請確認後端已啟動';
+        _isLocationSuccess = false;
       }
-      _locationMessage = '無法連線到伺服器,請確認後端已啟動';
-      _isLocationSuccess = false;
       notifyListeners();
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Map viewport
-  // ---------------------------------------------------------------------
-
-  /// Recomputes which shelters fall inside the visible radius of [center].
-  void updateVisibleShelters(LatLng center) {
-    if (_shelters.isEmpty) return;
-    _visibleCenter = center;
-    _visibleShelters = [
-      for (final shelter in locatableShelters(_shelters))
-        if (calculateDistance(
-              center.latitude,
-              center.longitude,
-              shelter.latitude!,
-              shelter.longitude!,
-            ) <=
-            MapConstants.visibleRadiusMeters)
-          shelter,
-    ];
-    notifyListeners();
-  }
+  /// Re-runs the last cluster query — used when the filters change while the
+  /// map is idle.
+  Future<void> refreshClusters() => loadClusters(_lastBounds, _lastZoom);
 
   // ---------------------------------------------------------------------
   // Selection
@@ -208,7 +247,11 @@ class ShelterMapViewModel extends ChangeNotifier {
     if (!_isSearching) {
       _searchQuery = '';
       _searchResults = const [];
-      _filteredShelters = const [];
+      _searchTotal = 0;
+      _searchHasMore = false;
+      // The map kept moving (and skipping cluster fetches) while search was
+      // open — bring the markers back in sync with the current viewport.
+      unawaited(refreshClusters());
     } else if (_showShelterDetails) {
       _showShelterDetails = false;
       _selectedShelter = null;
@@ -226,7 +269,9 @@ class ShelterMapViewModel extends ChangeNotifier {
       _isSearching = false;
       _searchQuery = '';
       _searchResults = const [];
-      _filteredShelters = const [];
+      _searchTotal = 0;
+      _searchHasMore = false;
+      unawaited(refreshClusters());
     }
     if (_showShelterDetails) {
       _showShelterDetails = false;
@@ -245,38 +290,106 @@ class ShelterMapViewModel extends ChangeNotifier {
     } else if (spaceFilterTypes.contains(filterType)) {
       _selectedSpaceTypes.add(filterType);
     }
-    _recomputeFiltered();
+    // Filters are applied server-side now, so a chip change means re-asking:
+    // the current search (page 1) when searching, the viewport otherwise.
+    unawaited(_refreshAfterFilterChange());
   }
 
-  /// Throws on network failure — the caller decides how to surface that
-  /// (e.g. a SnackBar), matching the surrounding page's other API calls.
+  /// Re-fetches whatever the current filters should be applied to. Failures
+  /// are swallowed — the user already got a SnackBar for the initial search,
+  /// and keeping the previous results on screen beats an unhandled async
+  /// error when a chip toggle re-query flakes.
+  Future<void> _refreshAfterFilterChange() async {
+    try {
+      if (_isSearching && _searchQuery.isNotEmpty) {
+        await search(_searchQuery);
+      } else {
+        await refreshClusters();
+      }
+    } catch (_) {
+      // Keep whatever is on screen.
+    }
+  }
+
+  /// Fetches the first page of results for [query]. Throws on network
+  /// failure — the caller decides how to surface that (e.g. a SnackBar),
+  /// matching the surrounding page's other API calls.
   Future<void> search(String query) async {
     _searchQuery = query;
     if (query.isEmpty) {
+      _searchRequestId++;
       _searchResults = const [];
-      _recomputeFiltered();
+      _searchTotal = 0;
+      _searchHasMore = false;
+      _searchOffset = 0;
+      notifyListeners();
       return;
     }
-    _searchResults = await _fetchFilteredShelters(q: query);
-    _recomputeFiltered();
+    await _fetchSearchPage(offset: 0, requestId: ++_searchRequestId);
   }
 
-  void _recomputeFiltered() {
-    final hasQuery = _searchQuery.isNotEmpty;
-    final hasFilters =
-        _selectedDisasterTypes.isNotEmpty || _selectedSpaceTypes.isNotEmpty;
-    final source = hasQuery ? _searchResults : _shelters;
+  /// Loads the next page of the current search, if one exists. Failures
+  /// stop pagination silently — the list already has content to show.
+  Future<void> loadMoreSearch() async {
+    if (!_searchHasMore || _isLoadingMore) return;
+    await _fetchSearchPage(offset: _searchOffset, requestId: _searchRequestId);
+  }
 
-    _filteredShelters = (!hasFilters && !hasQuery)
-        ? const []
-        : applyShelterFilters(
-            source,
-            disasterTypes: _selectedDisasterTypes,
-            spaceTypes: _selectedSpaceTypes,
-            lat: _currentPosition?.latitude,
-            lon: _currentPosition?.longitude,
-          );
+  Future<void> _fetchSearchPage({
+    required int offset,
+    required int requestId,
+  }) async {
+    _isLoadingMore = offset > 0;
     notifyListeners();
+
+    final params = repo.sheltersPageQueryParams(
+      q: _searchQuery,
+      disasters: _selectedDisasterTypes.isEmpty
+          ? null
+          : _selectedDisasterTypes,
+      spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
+      limit: searchPageSize,
+      offset: offset,
+    );
+    final key = RequestCache.keyFor('/shelters', params);
+
+    try {
+      final page = await _fetchShelterPage(params);
+      if (requestId != _searchRequestId) return;
+      _searchResults = offset == 0
+          ? page.shelters
+          : [..._searchResults, ...page.shelters];
+      _searchTotal = page.total;
+      _searchOffset = offset + page.shelters.length;
+      _searchHasMore = page.truncated;
+      _isShowingCachedData = false;
+      _cachedAt = null;
+      unawaited(_cachePut(key, page.toJson()));
+    } catch (_) {
+      if (requestId != _searchRequestId) return;
+      if (offset == 0) {
+        final cached = await _cacheGet(key);
+        if (requestId != _searchRequestId) return;
+        if (cached != null) {
+          final page = ShelterPage.fromJson(cached.body);
+          _searchResults = page.shelters;
+          _searchTotal = page.total;
+          _searchOffset = page.shelters.length;
+          _searchHasMore = page.truncated;
+          _isShowingCachedData = true;
+          _cachedAt = cached.cachedAt;
+        } else {
+          rethrow;
+        }
+      } else {
+        _searchHasMore = false;
+      }
+    } finally {
+      if (requestId == _searchRequestId) {
+        _isLoadingMore = false;
+        notifyListeners();
+      }
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -319,12 +432,18 @@ class ShelterMapViewModel extends ChangeNotifier {
       }
 
       _currentPosition = position;
-      updateVisibleShelters(LatLng(position.latitude, position.longitude));
-      _nearbyShelters = nearestShelters(
-        _shelters,
-        position.latitude,
-        position.longitude,
-      );
+      // The nearby panel now asks the server instead of scanning the full
+      // dataset client-side.
+      try {
+        _nearbyShelters = await _fetchNearby(
+          lat: position.latitude,
+          lng: position.longitude,
+          radiusMeters: MapConstants.visibleRadiusMeters,
+          limit: 5,
+        );
+      } catch (_) {
+        _nearbyShelters = const [];
+      }
 
       _locationMessage =
           '已定位: ${position.latitude.toStringAsFixed(4)}, '
