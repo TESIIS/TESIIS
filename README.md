@@ -160,6 +160,8 @@ Base URL 預設 `http://localhost:8080/api`。
 | `flood` `quake` `landslide` `tsunami` | `水災` `震災` `土石流` `海嘯` | 值為 `Y`／`N`，或別名 `備用`／`老舊聚落` |
 | `relief` `accessible` `indoor` `outdoor` | `救濟支站` `無障礙設施` `室內` `室外` | |
 | `match` | — | `and`（預設）或 `or`，**僅作用在災害條件上** |
+| `disasters` | — | 逗號分隔：`flood,earthquake,landslide,tsunami`，群內 OR |
+| `spaces` | — | 逗號分隔：`indoor,outdoor`，群內 OR、與 `disasters` 群間 AND |
 | `bbox` | — | `minLng,minLat,maxLng,maxLat`，單邊上限 2°，避免一次要整個台灣 |
 | `limit` `offset` | — | 套用在**過濾後**的結果，`limit` 預設 `Env.maxSnapshotItems`（8000） |
 
@@ -194,6 +196,26 @@ Base URL 預設 `http://localhost:8080/api`。
 
 ```bash
 curl 'localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&limit=3'
+```
+
+### `GET /shelters/clusters?bbox=&zoom=&disasters=&spaces=`
+
+地圖視窗用的網格分群標記：回應是「質心 + 數量」而非逐筆資料，全台視野只回傳幾百個圓圈，而不是 5,854 筆紀錄（gzip 後從 ~470 KB 降到數 KB 級）。與其他端點不同，`bbox` 上限放寬到單邊 6°，**省略 `bbox` 代表全國**——回應本來就小，沒有理由逼 client 把全國切成 2° 的 tile。單點分群會內嵌完整 shelter 物件，client 不必再發第二個請求就能開啟詳情。
+
+| 參數 | 說明 |
+|---|---|
+| `bbox` | 可省略（= 全國）；單邊上限 6° |
+| `zoom` | **必填**，6–19，決定網格大小（Web Mercator 每像素度數，`cellPixels` 80） |
+| `disasters` | 逗號分隔：`flood,earthquake,landslide,tsunami`，群內 OR |
+| `spaces` | 逗號分隔：`indoor,outdoor`，群內 OR、與 `disasters` 群間 AND |
+| `q` `city` `township` `type` 等 | 同 `/shelters`，全部在分群前套用 |
+
+```json
+{ "success": true, "dataFreshness": "live", "zoom": 13.0,
+  "clusters": [
+    { "count": 1, "lat": 25.0004, "lng": 121.4798, "shelter": { "名稱": "…", "座標x": 121.4798, "座標y": 25.0004, "…" } },
+    { "count": 12, "lat": 25.0109, "lng": 121.5173 }
+  ] }
 ```
 
 ### `GET /shelters/stats`
@@ -263,12 +285,12 @@ Docker production build 使用 `API_BASE_URL=/api`，由同源反向代理連到
 # 後端
 cd server
 dart analyze        # 0 issues
-dart test           # 159 passed
+dart test           # 175 passed
 
 # 前端
 cd flutter_codefest
 flutter analyze     # 0 issues
-flutter test        # 68 passed
+flutter test        # 66 passed
 ```
 
 ### 端對端測試

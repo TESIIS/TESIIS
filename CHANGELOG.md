@@ -17,7 +17,7 @@
 - 測試從零建立：server 96 個、Flutter 22 個。
 - CI（analyze／format／test／web build／gitleaks／禁止檔名檢查）與每週上游資料監看排程。
 - 開源治理：`LICENSE`（MIT）、`NOTICE.md`（資料授權與再散布標示要求）、`CONTRIBUTING.md`（含禁止提交清單）、`SECURITY.md`、`CODE_OF_CONDUCT.md`、issue／PR 範本、`.githooks/pre-commit` 機密掃描。
-- **前端離線快取。** 每次成功抓到避難所清單後存進 `shared_preferences`；API 連不上時改用上次快取的資料並標示「顯示上次快取資料」，不再直接空白。地圖圖磚快取不在範圍內。
+- **前端離線快取。** 每次成功抓到避難所清單後存進 `shared_preferences`；API 連不上時改用上次快取的資料並標示「顯示上次快取資料」，不再直接空白。地圖圖磚快取不在範圍內。全國化後改為有界 LRU（見下文「離線快取改為有界 LRU」）。
 - 步行時間概估（直線距離 ÷ 1.4 m/s），顯示在避難所詳情與最近避難所面板；明確標示為概算而非真實路線。
 - `/shelters/stats` 的 `byRegion` 新增每個縣市／鄉鎮／村里的座標品質統計（`coordinateQuality`：`total`／`withCoordinates`／`missing`／`bySource`／`byConfidence`），供資料品質頁面使用。前端新增「座標資料品質」頁，依缺座標數排序列出各鄉鎮。
 - `e2e/`：Playwright 端對端煙霧測試（首頁載入、搜尋、開啟避難所詳情），對著 `docker compose up --build` 的完整站台跑；CI 新增對應 job。
@@ -26,6 +26,10 @@
 - `GET /api/regions[?city=]`：22 縣市（或指定縣市的鄉鎮）清單，各自帶座標品質統計，供縣市選擇器與資料品質頁面使用。
 - `/shelters`、`/shelters/stats`、`/shelters/nearby` 新增 `?bbox=minLng,minLat,maxLng,maxLat` 過濾（上限 2° × 2°）。
 - 前端新增自寫網格式 marker clustering（`flutter_codefest/lib/domain/marker_clustering.dart`），避免全國搜尋或密集行政區一次渲染數千個 marker widget；刻意不加現成套件，理由與 `csv_codec.dart` 手刻 CSV parser 相同。搜尋結果新增縣市／鄉鎮前綴，避免全國同名設施（「活動中心」「○○國小」）無法辨識。
+- **`GET /api/shelters/clusters?bbox=&zoom=&disasters=&spaces=`** — server 端網格分群標記。回應是質心 + 數量而非逐筆資料：全台視野從 ~470 KB（gzip）降到數 KB；`bbox` 上限放寬到單邊 6°、省略代表全國；單點分群內嵌完整 shelter，client 不用再發第二個請求開詳情。
+- **`disasters`／`spaces` 篩選群組參數。** 逗號分隔、群內 OR、跨群 AND——舊的單一 `matchMode` 無法表達「（水災 OR 土石流）AND（室內 OR 室外）」這種 UI 語意，前端篩選晶片之前只能下載全量後在 client 端過濾。
+- **前端資料流改為視窗式串流。** App 不再於啟動時下載 ~5,850 筆全量清單：地圖 marker 走 `/shelters/clusters` 每視窗拉取，附近避難所走 `/shelters/nearby`，搜尋結果改為 `limit/offset` 分頁（滾到底載入下一頁）。全量 fetch、1.5 公里圓圈邏輯、client 端距離排序一併移除。
+- **離線快取改為有界 LRU。** 取代先前把整份清單塞進 `shared_preferences`（web 上就是單一筆 ~4-5 MB 的 localStorage 條目、貼著平台 5 MB 上限）的做法：`RequestCache` 以請求 URL 為 key 快取最近 12 筆 viewport/page 回應（合計 <1 MB），「顯示上次快取資料」banner 改為逐請求粒度。
 
 ### Changed
 
