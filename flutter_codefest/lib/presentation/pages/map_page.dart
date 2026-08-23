@@ -11,6 +11,7 @@ import 'package:flutter_codefest/presentation/pages/data_quality_page.dart';
 import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
 import 'package:flutter_codefest/presentation/viewmodels/shelter_map_view_model.dart';
 import 'package:flutter_codefest/presentation/widgets/map/basemap_switcher.dart';
+import 'package:flutter_codefest/presentation/widgets/map/cluster_members_sheet.dart';
 import 'package:flutter_codefest/presentation/widgets/map/shelter_map_view.dart';
 import 'package:flutter_codefest/presentation/widgets/map/shelter_marker_layer.dart';
 import 'package:flutter_codefest/presentation/widgets/search/filter_chip_bar.dart';
@@ -44,6 +45,12 @@ class _MapPageState extends State<MapPage> {
   /// MapController throws if it is driven before the map has laid out.
   bool _isMapReady = false;
   Timer? _idleTimer;
+
+  /// Which nearest shelter the nearby panel was last closed for, so closing
+  /// it doesn't hide it forever — it comes back once a *different* shelter
+  /// becomes the nearest one (the user moved somewhere the old dismissal no
+  /// longer applies to).
+  String? _nearbyPanelDismissedFor;
 
   @override
   void initState() {
@@ -111,9 +118,38 @@ class _MapPageState extends State<MapPage> {
   /// at nationwide scale a broad search or a dense district can group dozens
   /// of shelters into one bubble, and there is no single "the" shelter to
   /// open a detail sheet for.
-  void _onClusterTapped(ShelterCluster cluster) {
+  ///
+  /// Zooming stops helping once the camera is already at
+  /// [MapConstants.maxZoom]: a cluster that's still grouped there is made of
+  /// shelters close enough together (tens of metres) that no further zoom
+  /// will separate their markers. That case falls back to
+  /// [_showClusterMembers] instead of moving the map nowhere.
+  Future<void> _onClusterTapped(ShelterCluster cluster) async {
     if (!_isMapReady) return;
-    _mapController.move(cluster.center, _mapController.camera.zoom + 2);
+    final zoom = _mapController.camera.zoom;
+    if (zoom >= MapConstants.maxZoom - 0.01) {
+      await _showClusterMembers(cluster);
+      return;
+    }
+    _mapController.move(cluster.center, zoom + 2);
+  }
+
+  Future<void> _showClusterMembers(ShelterCluster cluster) async {
+    final members = await _viewModel.fetchClusterMembers(
+      cluster.center,
+      cluster.count,
+    );
+    if (!mounted) return;
+    if (members.isEmpty) {
+      _showSnackBar('無法載入這個群集的避難所');
+      return;
+    }
+    final selected = await showModalBottomSheet<Shelter>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => ClusterMembersSheet(members: members),
+    );
+    if (selected != null) _onMarkerTapped(selected);
   }
 
   // ---------------------------------------------------------------------
@@ -219,7 +255,8 @@ class _MapPageState extends State<MapPage> {
         vm.currentPosition != null &&
         vm.nearbyShelters.isNotEmpty &&
         !vm.showShelterDetails &&
-        !vm.isSearching;
+        !vm.isSearching &&
+        vm.nearbyShelters.first.shelterId != _nearbyPanelDismissedFor;
 
     final hasFilters =
         vm.selectedDisasterTypes.isNotEmpty || vm.selectedSpaceTypes.isNotEmpty;
@@ -322,7 +359,7 @@ class _MapPageState extends State<MapPage> {
               ),
 
               _animatedSlot(
-                vm.isSearching
+                vm.isSearching && vm.searchQuery.isNotEmpty
                     ? Container(
                         margin: const EdgeInsets.only(top: 8),
                         constraints: BoxConstraints(
@@ -389,6 +426,9 @@ class _MapPageState extends State<MapPage> {
               context,
               MaterialPageRoute(builder: (context) => const UserManualPage()),
             ),
+            onClose: () => setState(() {
+              _nearbyPanelDismissedFor = vm.nearbyShelters.first.shelterId;
+            }),
             wide: isWide,
           ),
       ],

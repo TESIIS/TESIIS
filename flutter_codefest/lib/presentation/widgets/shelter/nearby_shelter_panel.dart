@@ -18,6 +18,7 @@ class NearbyShelterPanel extends StatelessWidget {
     required this.onNavigate,
     required this.onViewDetail,
     required this.onOpenManual,
+    required this.onClose,
     this.wide = false,
   });
 
@@ -26,6 +27,7 @@ class NearbyShelterPanel extends StatelessWidget {
   final VoidCallback onNavigate;
   final VoidCallback onViewDetail;
   final VoidCallback onOpenManual;
+  final VoidCallback onClose;
   final bool wide;
 
   String get _distanceText {
@@ -91,7 +93,12 @@ class NearbyShelterPanel extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _Header(colorScheme: colorScheme),
+                Row(
+                  children: [
+                    Expanded(child: _Header(colorScheme: colorScheme)),
+                    _CloseButton(colorScheme: colorScheme, onTap: onClose),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 _InfoBlock(
                   nearest: nearest,
@@ -176,7 +183,12 @@ class NearbyShelterPanel extends StatelessWidget {
                     ),
                   ),
                 ),
-                _Header(colorScheme: colorScheme),
+                Row(
+                  children: [
+                    Expanded(child: _Header(colorScheme: colorScheme)),
+                    _CloseButton(colorScheme: colorScheme, onTap: onClose),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 _InfoBlock(
                   nearest: nearest,
@@ -195,6 +207,23 @@ class NearbyShelterPanel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CloseButton extends StatelessWidget {
+  const _CloseButton({required this.colorScheme, required this.onTap});
+
+  final ColorScheme colorScheme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: '關閉',
+      icon: Icon(Icons.close, color: colorScheme.onSurfaceVariant, size: 20),
+      visualDensity: VisualDensity.compact,
+      onPressed: onTap,
     );
   }
 }

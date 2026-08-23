@@ -38,6 +38,20 @@ class MapConstants {
   /// How long the map must sit still before recomputing what is in range.
   static const Duration idleDebounce = Duration(milliseconds: 300);
 
+  /// Camera zoom bounds, shared with `map_page.dart`'s cluster-tap handling:
+  /// tapping a cluster that is still grouped at [maxZoom] can't be resolved
+  /// by zooming in further, so it needs a different way to open (see
+  /// `ClusterMembersSheet`) instead of silently doing nothing.
+  static const double minZoom = 6;
+  static const double maxZoom = 19;
+
+  /// Search radius for fetching the individual members of a cluster that's
+  /// still grouped at [maxZoom]. Wider than the grid cell clustering ever
+  /// produces at that zoom (tens of metres) so it reliably catches every
+  /// member, while still tight enough not to pull in unrelated shelters from
+  /// a neighbouring cluster.
+  static const double clusterExpandRadiusMeters = 250;
+
   /// Zoom level for the fallback nationwide view (`taiwanCenter`).
   static const double nationwideZoom = 7.5;
 

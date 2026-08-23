@@ -30,6 +30,8 @@ ShelterMapViewModel _viewModel({
     required double lng,
     double? radiusMeters,
     int limit,
+    Set<String>? disasters,
+    Set<String>? spaces,
   })?
   nearby,
   Future<CachedResponse?> Function(String key)? cacheGet,
@@ -43,8 +45,14 @@ ShelterMapViewModel _viewModel({
           const ShelterPage(shelters: [], total: 0, truncated: false),
   fetchNearby:
       nearby ??
-      ({required lat, required lng, radiusMeters, limit = 10}) async =>
-          const [],
+      ({
+        required lat,
+        required lng,
+        radiusMeters,
+        limit = 10,
+        disasters,
+        spaces,
+      }) async => const [],
   isLocationServiceEnabled: () async => false,
   getLastKnownPosition: getLastKnownPosition ?? () async => null,
   cacheGet: cacheGet ?? (key) async => null,
@@ -411,7 +419,14 @@ void main() {
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
         fetchNearby:
-            ({required lat, required lng, radiusMeters, limit = 10}) async {
+            ({
+              required lat,
+              required lng,
+              radiusMeters,
+              limit = 10,
+              disasters,
+              spaces,
+            }) async {
               nearbyCall = {
                 'lat': lat,
                 'lng': lng,
@@ -437,6 +452,40 @@ void main() {
       expect(nearbyCall?['radius'], 1500);
     });
 
+    test(
+      'falls back to getCurrentPosition when getLastKnownPosition throws '
+      '(Flutter Web has no last-known-position concept)',
+      () async {
+        final vm = ShelterMapViewModel(
+          fetchClusters: (params) async => const [],
+          fetchShelterPage: (params) async =>
+              const ShelterPage(shelters: [], total: 0, truncated: false),
+          fetchNearby:
+              ({
+                required lat,
+                required lng,
+                radiusMeters,
+                limit = 10,
+                disasters,
+                spaces,
+              }) async => const [],
+          isLocationServiceEnabled: () async => true,
+          checkPermission: () async => LocationPermission.always,
+          requestPermission: () async => LocationPermission.always,
+          getLastKnownPosition: () async =>
+              throw UnsupportedError('not supported on the web platform'),
+          getCurrentPosition: () async => fakePosition(lat: 25.0, lng: 121.5),
+          cacheGet: (key) async => null,
+          cachePut: (key, body) async {},
+        );
+
+        await vm.getCurrentLocation();
+
+        expect(vm.isLocationSuccess, isTrue);
+        expect(vm.currentPosition?.latitude, 25.0);
+      },
+    );
+
     test('refreshes nearby shelters with the current zoom radius', () async {
       final radii = <double>[];
       final vm = ShelterMapViewModel(
@@ -444,7 +493,14 @@ void main() {
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
         fetchNearby:
-            ({required lat, required lng, radiusMeters, limit = 10}) async {
+            ({
+              required lat,
+              required lng,
+              radiusMeters,
+              limit = 10,
+              disasters,
+              spaces,
+            }) async {
               radii.add(radiusMeters ?? 0);
               return [fakeShelter(id: radii.length, lat: lat, lng: lng)];
             },

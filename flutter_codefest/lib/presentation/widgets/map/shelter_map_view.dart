@@ -31,8 +31,8 @@ class ShelterMapView extends StatelessWidget {
       options: MapOptions(
         initialCenter: MapConstants.taiwanCenter,
         initialZoom: MapConstants.nationwideZoom,
-        minZoom: 6,
-        maxZoom: 19,
+        minZoom: MapConstants.minZoom,
+        maxZoom: MapConstants.maxZoom,
         onMapReady: onMapReady,
         onPositionChanged: onPositionChanged,
         onTap: onTap,

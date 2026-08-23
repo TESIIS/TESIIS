@@ -76,6 +76,8 @@ Future<List<Shelter>> fetchNearbyShelters({
   required double lng,
   double? radiusMeters,
   int limit = 10,
+  Set<String>? disasters,
+  Set<String>? spaces,
 }) async {
   final body =
       await ApiService.get(
@@ -85,6 +87,10 @@ Future<List<Shelter>> fetchNearbyShelters({
               'lng': '$lng',
               if (radiusMeters != null) 'radius': '$radiusMeters',
               'limit': '$limit',
+              if (disasters != null && disasters.isNotEmpty)
+                'disasters': disasters.join(','),
+              if (spaces != null && spaces.isNotEmpty)
+                'spaces': spaces.join(','),
             },
           )
           as Map<String, dynamic>;

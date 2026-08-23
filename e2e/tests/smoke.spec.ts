@@ -64,14 +64,25 @@ async function searchShelters(page: Page, query: string) {
 /// the nationwide NFA dataset that replaced it as the primary source
 /// abbreviates the same facility to "螢橋國中". Querying live sidesteps
 /// that entirely.
+///
+/// Picks a shelter with a coordinate on record — nationwide, about 8% of
+/// the dataset has none (see `Shelter.hasCoordinate`'s doc comment in the
+/// Flutter app), and `limit=1` alone can easily land on one of those. A
+/// caller that needs to navigate to the result (the nav-button test) would
+/// then never see the button, since it only renders when the shelter has
+/// coordinates.
 async function fetchSampleShelter(
   request: import('@playwright/test').APIRequestContext,
   baseURL: string,
   city: string,
 ) {
-  const res = await request.get(`${baseURL}/api/shelters?city=${encodeURIComponent(city)}&limit=1`);
+  const res = await request.get(
+    `${baseURL}/api/shelters?city=${encodeURIComponent(city)}&limit=50`,
+  );
   const body = await res.json();
-  const shelter = body.data[0];
+  const shelters = body.data as Array<Record<string, unknown>>;
+  const shelter =
+    shelters.find((s) => s['座標x'] != null && s['座標y'] != null) ?? shelters[0];
   return { name: shelter['名稱'] as string, city: shelter['縣市'] as string };
 }
 
@@ -87,7 +98,7 @@ test.describe('shelter web smoke', () => {
     await expect(page).toHaveTitle('臺灣避難收容處所資訊整合系統');
     await enableSemantics(page);
 
-    await expect(page.getByText('全國避難設施地圖')).toBeVisible({
+    await expect(page.getByText('TESIIS 臺灣避難收容處所地圖')).toBeVisible({
       timeout: 15_000,
     });
   });

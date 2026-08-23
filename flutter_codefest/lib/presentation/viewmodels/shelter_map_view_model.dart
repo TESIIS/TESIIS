@@ -24,6 +24,8 @@ typedef FetchNearbyShelters =
       required double lng,
       double? radiusMeters,
       int limit,
+      Set<String>? disasters,
+      Set<String>? spaces,
     });
 typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
@@ -229,6 +231,27 @@ class ShelterMapViewModel extends ChangeNotifier {
   /// Re-runs the last cluster query — used when the filters change while the
   /// map is idle.
   Future<void> refreshClusters() => loadClusters(_lastBounds, _lastZoom);
+
+  /// The individual shelters folded into a cluster that's still grouped at
+  /// the map's maximum zoom, so tapping it can't be resolved by zooming in
+  /// further.
+  ///
+  /// The clusters endpoint only ever sends a centroid and a count for a
+  /// multi-member cluster — the whole point of clustering is not shipping
+  /// every member — so there is nothing client-side to show. This instead
+  /// asks `/shelters/nearby` for the [count] closest shelters to that
+  /// centroid, using the same filters the cluster itself was built with, so
+  /// the result matches what's on screen.
+  Future<List<Shelter>> fetchClusterMembers(LatLng center, int count) {
+    return _fetchNearby(
+      lat: center.latitude,
+      lng: center.longitude,
+      radiusMeters: MapConstants.clusterExpandRadiusMeters,
+      limit: count,
+      disasters: _selectedDisasterTypes.isEmpty ? null : _selectedDisasterTypes,
+      spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Selection
@@ -436,7 +459,17 @@ class ShelterMapViewModel extends ChangeNotifier {
       }
 
       final requestedRadius = radiusMeters ?? _nearbyRadiusMeters;
-      final lastKnown = await _getLastKnownPosition();
+      // Flutter Web's Geolocator has no "last known position" concept — it
+      // throws UnsupportedError rather than returning null. Left uncaught,
+      // that exception used to escape to the outer catch below and skip
+      // `_getCurrentPosition()` entirely, so the app never located the user
+      // on web at all (no nearby panel, no navigate button anywhere).
+      Position? lastKnown;
+      try {
+        lastKnown = await _getLastKnownPosition();
+      } catch (_) {
+        // Not supported on this platform — fall through to a fresh fix.
+      }
       if (_isValidPosition(lastKnown)) {
         await _applyLocatedPosition(lastKnown!, requestedRadius);
         _isLoadingLocation = false;
