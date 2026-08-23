@@ -251,7 +251,20 @@ class ShelterDetailSheet extends StatelessWidget {
       InfoRow(label: '室內空間', value: shelter.indoor == 'Y' ? '有' : '無'),
       InfoRow(label: '室外空間', value: shelter.outdoor == 'Y' ? '有' : '無'),
       InfoRow(label: '無障礙設施', value: shelter.accessible == 'Y' ? '有' : '無'),
-      InfoRow(label: '救濟站', value: shelter.reliefStation == 'Y' ? '是' : '否'),
+      // Unlike indoor/outdoor/accessible, NFA carries no equivalent of this
+      // field at all — every nationwide shelter's reliefStation arrives as
+      // '', not a real 'N'. Falling through to "否" the way the other three
+      // do would tell 5,854 shelters "not a relief station" when the honest
+      // answer is "no data". InfoRow already hides an empty value, so
+      // leaving it '' here reads as "not stated" instead of a false no.
+      InfoRow(
+        label: '救濟站',
+        value: switch (shelter.reliefStation) {
+          'Y' => '是',
+          'N' => '否',
+          _ => '',
+        },
+      ),
 
       const SizedBox(height: 16),
       _SectionTitle('聯絡資訊'),

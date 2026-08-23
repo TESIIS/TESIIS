@@ -16,8 +16,55 @@ permissions:
   contents: read
 
 jobs:
+  check-nationwide:
+    name: verify nationwide snapshot (primary data source)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+
+      # build_nationwide_snapshot.dart carries its own quality gates (all 22
+      # counties represented, ≥95% overall accept ratio, ≥75% per county —
+      # see _checkGates in the tool) and exits non-zero when one fails, so
+      # this step alone is the coverage-regression check. --refresh forces a
+      # live pull rather than reusing tool/.cache/, since the whole point is
+      # to notice when upstream itself has changed.
+      - name: Rebuild nationwide snapshot from live data
+        run: |
+          dart run tool/build_nationwide_snapshot.dart \
+            --refresh --report \
+            --output /tmp/shelters_nationwide.csv \
+            --rejected-output /tmp/shelters_rejected.csv \
+            | tee /tmp/nationwide-report.txt
+
+      - name: Diff against the committed snapshot
+        run: |
+          if diff -q data/shelters_nationwide.csv /tmp/shelters_nationwide.csv > /dev/null; then
+            echo "Committed nationwide snapshot is up to date."
+          else
+            echo "::warning::Upstream nationwide data has changed. Run:"
+            echo "  cd server && dart run tool/build_nationwide_snapshot.dart --refresh --report"
+            diff data/shelters_nationwide.csv /tmp/shelters_nationwide.csv | head -40 || true
+          fi
+
+      - name: Upload report and rejected rows
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nationwide-snapshot-report
+          path: |
+            /tmp/nationwide-report.txt
+            /tmp/shelters_rejected.csv
+          retention-days: 90
+
   check:
-    name: verify upstream schema and coverage
+    name: verify upstream schema and coverage (臺北市 secondary pipeline)
     runs-on: ubuntu-latest
     defaults:
       run:

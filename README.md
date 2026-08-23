@@ -50,7 +50,6 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 ✅ Server running on http://0.0.0.0:8080
 ```
 
----
 
 ## 這個專案在解什麼問題
 
@@ -59,10 +58,6 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 1. **驗證座標品質。** 單一全國 bounding box 沒有意義（會誤放某縣市座標到別的地方去），改用逐縣市 22 組 box 驗證，5,854 筆（98.0%）通過，成果進版控，任何人 clone 下來立刻可用。
 2. **處理上游資料的怪癖。** 災害欄位不是單純 Y/N（NFA 用「是／否」）、里別分隔符不一致、數值欄位混雜中文說明——這些都在後端統一處理過。
 3. **免金鑰的地圖。** 底圖用內政部國土測繪中心的免費 WMTS 服務，不需要 Google Cloud 帳號。
-
-專案最初只涵蓋臺北市 401 筆（資料源是[臺北市資料大平臺](https://data.taipei/dataset/detail?id=aaf97773-3631-40e2-b3cc-da87bf2ce1d5)，該資料集本身沒有座標欄位，需要額外 join 消防署與警政資料補座標）。這條臺北市專屬管線（[`build_coordinates.dart`](server/tool/build_coordinates.dart)）還留著，作為次要資料源與授權來源記錄，但**現在的主資料源是消防署全國點位檔**，見下方「座標從哪裡來」。
-
----
 
 ## 架構
 
@@ -101,8 +96,6 @@ Nginx 明確送出 `X-Frame-Options: DENY` 與 `frame-ancestors 'none'`，正式
 獨立網站，不應再嵌入臺北通或其他 iframe。全國化方案見
 [`docs/nationwide-roadmap.md`](docs/nationwide-roadmap.md)。
 
----
-
 ## 座標從哪裡來
 
 這是整個專案最需要理解的一件事。
@@ -124,7 +117,7 @@ dart run tool/build_nationwide_snapshot.dart --report              # 現行做�
 dart run tool/build_nationwide_snapshot.dart --refresh --report    # 忽略快取，重抓上游
 ```
 
-### 座標品質（2026-08-22 實測）
+### 座標品質
 
 單一全國 bounding box 沒有意義——會讓某縣市的錯誤座標被誤判成「落在臺灣境內所以正常」。逐縣市驗證後：**5,854 / 5,973 筆通過（98.0%）**，比臺北市時期單獨計算的 92.3% 還高。119 筆被拒的座標明顯分三類，記在 [`taiwan_bounds.dart`](server/lib/core/geo/taiwan_bounds.dart) 的註解裡：
 
@@ -147,8 +140,6 @@ dart run tool/build_coordinates.dart --report
 ```
 
 還有一個 `--overpass` 旗標會拿 OpenStreetMap 補齊剩餘的點。**預設不要用**——它會讓產出的 CSV 落入具傳染性的 ODbL，見 [NOTICE.md](NOTICE.md)。
-
----
 
 ## API
 
@@ -235,8 +226,6 @@ curl 'localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&lim
 curl 'localhost:8080/api/regions?city=高雄市'
 ```
 
----
-
 ## 設定
 
 ### server
@@ -267,8 +256,6 @@ Docker production build 使用 `API_BASE_URL=/api`，由同源反向代理連到
 
 - Android 模擬器連本機要用 `10.0.2.2`，不是 `localhost`。
 - Flutter Web 若以 https 提供服務，後端也必須是 https，否則會被瀏覽器的 mixed-content 擋掉。
-
----
 
 ## 開發
 
@@ -317,7 +304,6 @@ git config core.hooksPath .githooks
 - 實務上可直接執行的目標是 `-d chrome` 與 macOS desktop
 - iOS 需要 CocoaPods、Android 需要 Android SDK；本專案的 iOS/Android 設定（定位權限描述、entitlements、applicationId）已補齊但**未在本機實際建置驗證**
 
----
 
 ## 上游資料的已知特性
 
@@ -337,7 +323,32 @@ git config core.hooksPath .githooks
 - **上游 `?q=` 完全無效**——`q=南港`、`q=zzzz` 都回全部 401 筆。真正的關鍵字過濾發生在 server 本地。
 - **`match=or` 只作用在災害條件上**，region／type／keyword 永遠是 AND，且只評估查詢有帶到的災害鍵。
 
----
+
+## 最初版貢獻團隊
+
+臺北程式設計節城市通微服務大黑客松 2025 · 團隊 30 · 喵主餓餓女裝
+
+- **@twcat0503**（台貓）
+- **@nangong5421**（南宮柳信）
+- **@itousouta15**（伊藤蒼太）
+- **@yuzen9622**（Z）
+- **@NiaN0412**（q_nnn412）
+
+並後續由
+
+- **@itousouta15**（伊藤蒼太）
+- **@twcat0503**（台貓）
+
+持續開發貢獻
+
+
+## 資料來源
+
+- [臺北市可供避難收容處所一覽表](https://data.taipei/dataset/detail?id=aaf97773-3631-40e2-b3cc-da87bf2ce1d5) — 臺北市政府社會局
+- [避難收容處所點位檔](https://data.gov.tw/dataset/73242) — 內政部消防署
+- [北市警政APP_防空避難設備位置](https://data.taipei/dataset/detail?id=83eecdf1-3bbb-40f9-9484-b55b700c37ef) — 臺北市政府警察局
+- [國土測繪圖資服務雲 WMTS](https://maps.nlsc.gov.tw/) — 內政部國土測繪中心
+- [OpenStreetMap](https://www.openstreetmap.org/) — © OpenStreetMap contributors (ODbL)，**僅 `--overpass` opt-in 時使用，進版控的座標表不含其資料**
 
 ## 授權
 
@@ -351,25 +362,3 @@ git config core.hooksPath .githooks
 > 上游資料非即時，且部分座標為推估值。**災時請以臺北市政府即時公告為準。**
 
 安全性問題請見 [SECURITY.md](SECURITY.md)，不要開公開 issue。
-
----
-
-## 資料來源
-
-- [臺北市可供避難收容處所一覽表](https://data.taipei/dataset/detail?id=aaf97773-3631-40e2-b3cc-da87bf2ce1d5) — 臺北市政府社會局
-- [避難收容處所點位檔](https://data.gov.tw/dataset/73242) — 內政部消防署
-- [北市警政APP_防空避難設備位置](https://data.taipei/dataset/detail?id=83eecdf1-3bbb-40f9-9484-b55b700c37ef) — 臺北市政府警察局
-- [國土測繪圖資服務雲 WMTS](https://maps.nlsc.gov.tw/) — 內政部國土測繪中心
-- [OpenStreetMap](https://www.openstreetmap.org/) — © OpenStreetMap contributors (ODbL)，**僅 `--overpass` opt-in 時使用，進版控的座標表不含其資料**
-
----
-
-## 團隊
-
-臺北程式設計節城市通微服務大黑客松 2025 · 團隊 30 · 喵主餓餓女裝
-
-- **@twcat0503**（台貓）
-- **@nangong5421**（南宮柳信）
-- **@itousouta15**（伊藤蒼太）
-- **@yuzen9622**（Z）
-- **@NiaN0412**（q_nnn412）

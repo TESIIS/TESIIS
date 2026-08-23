@@ -330,27 +330,30 @@ class _MapPageState extends State<MapPage> {
                         constraints: BoxConstraints(
                           maxHeight: MediaQuery.of(context).size.height * 0.6,
                         ),
-                        decoration: BoxDecoration(
+                        // Material, not a plain Container+BoxDecoration: the
+                        // list inside is made of ListTiles, which paint their
+                        // background/ink splashes on the nearest Material
+                        // ancestor. An opaque BoxDecoration sitting between
+                        // them and the root Material hid that ink entirely —
+                        // Flutter's own framework assertion catches this and
+                        // was firing on every result row. clipBehavior also
+                        // makes the scrolling list respect the rounded
+                        // corners, which the old plain Container never did.
+                        child: Material(
                           color: colorScheme.surface,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              spreadRadius: 1,
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: SearchResultsList(
-                          shelters: resultList,
-                          hasFilters: hasFilters,
-                          currentPosition: vm.currentPosition,
-                          selectedShelter: vm.selectedShelter,
-                          onSelect: (shelter) {
-                            _onMarkerTapped(shelter);
-                            _toggleSearch();
-                          },
+                          elevation: 6,
+                          clipBehavior: Clip.antiAlias,
+                          child: SearchResultsList(
+                            shelters: resultList,
+                            hasFilters: hasFilters,
+                            currentPosition: vm.currentPosition,
+                            selectedShelter: vm.selectedShelter,
+                            onSelect: (shelter) {
+                              _onMarkerTapped(shelter);
+                              _toggleSearch();
+                            },
+                          ),
                         ),
                       )
                     : null,

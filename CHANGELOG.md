@@ -45,6 +45,9 @@
 - `GET /shelters` 的 `limit` 預設值 1000：401 筆臺北市資料時從沒觸發過，換成全國 5,854 筆後前端會**默默拿到被砍掉三分之二的清單、卻沒有任何錯誤或截斷提示**。預設值改成 `Env.maxSnapshotItems`（8000），並新增 `truncated` 欄位讓 client 隨時能判斷清單是否完整。
 - `HazardFlag.normalizeForOutput` 只把「是」正規化成 `Y`，沒有對應把「否」正規化成 `N`——臺北市資料的災害欄位本來就是原生 `N`，這條路徑從沒被踩過，直到全國資料用「是／否」才讓 `"室內":"Y"` 旁邊出現 `"室外":"否"` 這種不一致的 API 輸出。
 - 全國資料的座標品質閘門用 FNV-1a 雜湊產生 `收容所編號`，Dart 原生 `int` 是固定 64-bit 沒有 bignum 自動升級，雜湊值 sign bit 為 1 時 `toRadixString` 會印出帶負號的字串（例如 `NFA-CHA--1186...`）而非乾淨的十六進位。
+- 避難所詳情頁的「救濟站」對每一筆全國資料都顯示「否」。NFA 資料沒有「救濟支站」欄位，API 回傳 `null`，前端把 null 轉成空字串後又用 `== 'Y' ? '是' : '否'` 判斷——空字串永遠不等於 `'Y'`，於是「不知道」被顯示成肯定的「不是」。改成只有 `Y`/`N` 兩種原生值才顯示，其餘（含 NFA 的空值）直接不顯示這一行，跟其他缺欄位的呈現方式一致。
+- `.github/workflows/upstream-data-check.yml` 只監看臺北市次要管線（`build_coordinates.dart`），現在地圖的命脈——全國快照——完全沒人在看，上游改格式或掉筆數不會有任何警訊。新增 `check-nationwide` job，跑 `build_nationwide_snapshot.dart --refresh --report`（工具本身的品質閘門就是覆蓋率檢查），並把報告與被拒清單存成 90 天的 artifact。
+- 搜尋結果每一列都會噴一次 `ListTile background color or ink splashes may be invisible` 的 framework 斷言——結果清單外層的 `Container` 用 `BoxDecoration` 畫背景，擋在 `ListTile` 與最近的 `Material` 祖先之間。改用 `Material` 承載背景色/圓角/陰影，順便讓清單內容的圓角裁切正確（原本捲動內容不會被裁成圓角）。
 - **篩選與搜尋結果被截斷成最多 5 筆。** `getNearestShelters` 的 `limit` 預設值是 5，卻被當作單純的排序函式呼叫。已拆成 `sortedByDistance`（不截斷）與 `nearestShelters(limit:)`。
 - 地圖更新的 `_isUpdating` 旗標沒有 `try/finally` 保護，中途拋例外會永久卡死，地圖不再更新。
 - iOS `Info.plist` 缺少 `NSLocationWhenInUseUsageDescription`，取得定位時會直接 crash。
