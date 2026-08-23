@@ -394,4 +394,99 @@ void main() {
       },
     );
   });
+
+  group('GET /shelters/clusters', () {
+    final data = [
+      shelter(id: 1, name: '甲所', x: 121.5000, y: 25.0300),
+      shelter(id: 2, name: '乙所', x: 121.5001, y: 25.0301),
+      shelter(id: 3, name: '丙所', x: 120.5000, y: 22.6000),
+      shelter(id: 4, name: '無座標所'),
+    ];
+
+    test('returns clustered markers with singles embedded in full', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/clusters?zoom=13&bbox=121.0,24.5,122.0,25.5',
+      );
+      final body = res['body'] as Map;
+      expect(body['success'], isTrue);
+      expect(body['zoom'], 13);
+
+      final clusters = (body['clusters'] as List).cast<Map<String, dynamic>>();
+      // 甲所+乙所 share a cell at zoom 13; 丙所 is outside the bbox; 無座標所
+      // has nowhere to be drawn.
+      expect(clusters, hasLength(1));
+      final cluster = clusters.single;
+      expect(cluster['count'], 2);
+      expect(cluster.containsKey('shelter'), isFalse);
+    });
+
+    test('a lone shelter inside the bbox comes back as a single cluster', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/clusters?zoom=13&bbox=120.0,22.0,121.0,23.0',
+      );
+      final clusters = (res['body'] as Map)['clusters'] as List;
+      expect(clusters, hasLength(1));
+      final cluster = clusters.single as Map<String, dynamic>;
+      expect(cluster['count'], 1);
+      expect((cluster['shelter'] as Map)['名稱'], '丙所');
+    });
+
+    test('no bbox means the whole country, not nothing', () async {
+      final res = await get(controllerFor(data), '/shelters/clusters?zoom=8');
+      final body = res['body'] as Map;
+      final clusters = (body['clusters'] as List).cast<Map<String, dynamic>>();
+      // 甲所+乙所 share a zoom-8 cell; 丙所 sits a degree away in its own.
+      expect(clusters, hasLength(2));
+      expect(clusters.map((c) => c['count']), containsAll([2, 1]));
+    });
+
+    test('zoom is required and validated', () async {
+      expect(
+        (await get(controllerFor(data), '/shelters/clusters'))['status'],
+        400,
+      );
+      expect(
+        (await get(controllerFor(data), '/shelters/clusters?zoom=3'))['status'],
+        400,
+      );
+      expect(
+        (await get(controllerFor(data), '/shelters/clusters?zoom=20'))['status'],
+        400,
+      );
+    });
+
+    test('disasters/spaces filter the clusters server-side', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/clusters?zoom=13&disasters=landslide',
+      );
+      final body = res['body'] as Map;
+      final clusters = (body['clusters'] as List).cast<Map<String, dynamic>>();
+      // Fake default landslide is 'N' for every shelter, so nothing matches.
+      expect(clusters, isEmpty);
+      final filters = body['filters'] as Map;
+      expect(filters['disasters'], ['土石流']);
+    });
+
+    test('an unknown group key is a 400, not a silent no-op', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters/clusters?zoom=13&disasters=volcano',
+      );
+      expect(res['status'], 400);
+      expect(
+        (res['body'] as Map)['message'],
+        contains('unknown key'),
+      );
+    });
+
+    test('carries the data-freshness metadata', () async {
+      final res = await get(controllerFor(data), '/shelters/clusters?zoom=13');
+      final body = res['body'] as Map;
+      expect(body['dataSource'], 'nfa_point_file');
+      expect(body.containsKey('dataFreshness'), isTrue);
+    });
+  });
 }

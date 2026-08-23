@@ -384,6 +384,117 @@ void main() {
       );
     });
   });
+
+  group('filterShelters — disasters/spaces groups', () {
+    final data = [
+      shelter(
+        id: 1,
+        flood: 'Y',
+        landslide: 'N',
+        quake: 'N',
+        indoor: 'Y',
+        outdoor: 'N',
+      ),
+      shelter(
+        id: 2,
+        flood: 'N',
+        landslide: 'Y',
+        quake: 'N',
+        indoor: 'N',
+        outdoor: 'N',
+      ),
+      shelter(
+        id: 3,
+        flood: 'Y',
+        landslide: 'N',
+        quake: 'N',
+        indoor: 'N',
+        outdoor: 'Y',
+      ),
+    ];
+
+    test('disasters are ORed within the group', () {
+      final out = service.filterShelters(
+        data: data,
+        disasters: const {'水災', '土石流'},
+      );
+      expect(out.map((s) => s.id), [1, 2, 3]);
+    });
+
+    test('spaces are ORed within the group', () {
+      final out = service.filterShelters(
+        data: data,
+        spaces: const {'室內', '室外'},
+      );
+      expect(out.map((s) => s.id), [1, 3]);
+    });
+
+    test('the two groups are ANDed against each other', () {
+      final out = service.filterShelters(
+        data: data,
+        disasters: const {'水災'},
+        spaces: const {'室內'},
+      );
+      expect(out.map((s) => s.id), [1]);
+    });
+
+    test('a group is ANDed with the flat hazards params', () {
+      final out = service.filterShelters(
+        data: data,
+        hazards: const {'震災': 'N'},
+        disasters: const {'水災'},
+      );
+      expect(out.map((s) => s.id), [1, 3]);
+    });
+  });
+
+  group('clusterShelters', () {
+    test('groups shelters that share a grid cell into one count cluster', () {
+      // ~10 m apart — the same cell at any zoom a map view uses.
+      final data = [
+        shelter(id: 1, x: 121.5000, y: 25.0300),
+        shelter(id: 2, x: 121.5001, y: 25.0301),
+      ];
+      final clusters = service.clusterShelters(data: data, zoom: 13);
+      expect(clusters, hasLength(1));
+      expect(clusters.single.count, 2);
+      expect(clusters.single.shelter, isNull);
+    });
+
+    test('a lone shelter stays individual with the shelter attached', () {
+      final data = [shelter(id: 1, x: 121.50, y: 25.03)];
+      final clusters = service.clusterShelters(data: data, zoom: 13);
+      expect(clusters.single.count, 1);
+      expect(clusters.single.shelter?.id, 1);
+      expect(clusters.single.lat, 25.03);
+      expect(clusters.single.lng, 121.50);
+    });
+
+    test('shelters without coordinates are dropped', () {
+      final data = [shelter(id: 1), shelter(id: 2, x: 121.5, y: 25.03)];
+      final clusters = service.clusterShelters(data: data, zoom: 13);
+      expect(clusters.single.shelter?.id, 2);
+    });
+
+    test('clusters break apart as zoom increases', () {
+      // ~0.02° apart: the same cell at zoom 8 (cells are ~0.44° wide),
+      // different cells at zoom 13 (cells are ~0.014° wide).
+      final data = [
+        shelter(id: 1, x: 121.5000, y: 25.0300),
+        shelter(id: 2, x: 121.5200, y: 25.0300),
+      ];
+      final coarse = service.clusterShelters(data: data, zoom: 8);
+      final fine = service.clusterShelters(data: data, zoom: 13);
+      expect(coarse, hasLength(1));
+      expect(coarse.single.count, 2);
+      expect(fine, hasLength(2));
+      expect(fine.every((c) => c.count == 1), isTrue);
+    });
+
+    test('an empty list yields no clusters', () {
+      expect(service.clusterShelters(data: const [], zoom: 13), isEmpty);
+    });
+  });
 }
 
 /// computeStats/filterShelters are pure; the repository is never touched.

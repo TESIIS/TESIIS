@@ -1,9 +1,12 @@
 // lib/domain/services/shelter_service.dart
 
+import 'dart:math' as math;
+
 import '../../core/geo/city_codes.dart';
 import '../../core/geo/taiwan_bounds.dart';
 import '../../data/datasources/local/coordinate_source.dart';
 import '../entities/shelter.dart';
+import '../entities/shelter_cluster.dart';
 import '../entities/shelter_fields.dart';
 import '../repositories/shelter_repository.dart';
 
@@ -138,6 +141,13 @@ class ShelterService {
     return out.isEmpty ? null : out;
   }
 
+  /// True when [s] has a usable value ('Y') for **any** of the Chinese hazard
+  /// keys in [zhKeys] — the "OR within a group" half of the
+  /// `disasters`/`spaces` filter semantics. Groups are ANDed against each
+  /// other and against everything else by [filterShelters].
+  static bool _groupSatisfied(Shelter s, Set<String> zhKeys) =>
+      zhKeys.any((zh) => HazardFlag.isYes(_hazardValue(s, zh)));
+
   /// A shelter matches a village query either by its own 村里 or by appearing
   /// in its 服務里別 list.
   static bool _matchesVillages(Shelter s, List<String> wanted) {
@@ -156,6 +166,11 @@ class ShelterService {
   ///
   /// [matchMode] (`and` | `or`) applies to the hazard conditions only.
   ///
+  /// [disasters] and [spaces] are the grouped hazard semantics the map app
+  /// sends (`disasters=flood,landslide&spaces=indoor`): OR within a group,
+  /// AND across the two groups. Keys are Chinese column names (水災/震災/…),
+  /// matching [hazards].
+  ///
   /// [bbox], when given, is one more AND-ed predicate evaluated right here —
   /// which is the whole point of putting it in `filterShelters` rather than
   /// bolting it onto each endpoint separately: `/shelters`, `/shelters/stats`
@@ -171,11 +186,15 @@ class ShelterService {
     String? type,
     String? keyword,
     Map<String, String>? hazards, // keyed in Chinese: 水災/震災/…
+    Set<String>? disasters, // Chinese hazard keys, ORed within the group
+    Set<String>? spaces, // Chinese hazard keys, ORed within the group
     String matchMode = 'and',
     GeoBox? bbox,
   }) {
     final hz = hazards ?? const <String, String>{};
     final mm = matchMode.toLowerCase() == 'or' ? 'or' : 'and';
+    final disasterKeys = disasters ?? const <String>{};
+    final spaceKeys = spaces ?? const <String>{};
     final keywords = _normalizeKeywords(keyword);
     final villagesList = _mergeVillages(village, villages);
 
@@ -204,9 +223,77 @@ class ShelterService {
             if (!bbox.contains(s.x!, s.y!)) return false;
           }
           if (!_hazardsSatisfied(s, hz, mm)) return false;
+          if (disasterKeys.isNotEmpty && !_groupSatisfied(s, disasterKeys)) {
+            return false;
+          }
+          if (spaceKeys.isNotEmpty && !_groupSatisfied(s, spaceKeys)) {
+            return false;
+          }
           return _matchesKeywords(s, keywords);
         })
         .toList(growable: false);
+  }
+
+  // ---------------------------------------------------------------------
+  // Clustering
+  // ---------------------------------------------------------------------
+
+  /// Grid-buckets [data] (already filtered by the caller) into clusters
+  /// whose on-screen footprint is roughly [cellPixels] wide at [zoom].
+  ///
+  /// Mirrors the app's own `marker_clustering.dart`, kept algorithmically
+  /// identical so a marker set rendered client-side (search pages) and one
+  /// rendered server-side (viewport queries) break apart at the same zooms.
+  /// Cell size comes from the standard Web Mercator degrees-per-pixel
+  /// formula, so there is no per-zoom tuning table to maintain.
+  ///
+  /// Shelters without coordinates are dropped — a cluster is a map marker,
+  /// and there is nowhere to put one without a coordinate.
+  List<ShelterCluster> clusterShelters({
+    required List<Shelter> data,
+    required double zoom,
+    double cellPixels = 80,
+    int minPointsToCluster = 2,
+  }) {
+    final located = [for (final s in data) if (s.hasCoordinate) s];
+    if (located.isEmpty) return const [];
+
+    // Longitude degrees per pixel at this zoom (Web Mercator, tile size 256).
+    final lngPerPixel = 360 / (256 * math.pow(2, zoom));
+    final cellLng = lngPerPixel * cellPixels;
+
+    final buckets = <(int, int), List<Shelter>>{};
+    for (final shelter in located) {
+      // Latitude degrees per pixel scales with cos(latitude) under Web
+      // Mercator — one `cos` call per shelter keeps it correct at Taiwan's
+      // 22–26°N without hardcoding an approximation.
+      final latRad = shelter.y! * math.pi / 180;
+      final cellLat =
+          (lngPerPixel * cellPixels) / math.cos(latRad).abs().clamp(0.01, 1.0);
+      final cellX = (shelter.x! / cellLng).floor();
+      final cellY = (shelter.y! / cellLat).floor();
+      buckets.putIfAbsent((cellX, cellY), () => <Shelter>[]).add(shelter);
+    }
+
+    final clusters = <ShelterCluster>[];
+    for (final members in buckets.values) {
+      if (members.length < minPointsToCluster) {
+        for (final s in members) {
+          clusters.add(
+            ShelterCluster(count: 1, lat: s.y!, lng: s.x!, shelter: s),
+          );
+        }
+        continue;
+      }
+      final centerLat =
+          members.map((s) => s.y!).reduce((a, b) => a + b) / members.length;
+      final centerLng =
+          members.map((s) => s.x!).reduce((a, b) => a + b) / members.length;
+      clusters.add(
+        ShelterCluster(count: members.length, lat: centerLat, lng: centerLng),
+      );
+    }
+    return clusters;
   }
 
   // ---------------------------------------------------------------------
@@ -256,6 +343,8 @@ class ShelterService {
     List<String>? villages,
     String? type,
     Map<String, String>? hazards,
+    Set<String>? disasters,
+    Set<String>? spaces,
     String? keyword,
     String matchMode = 'and',
     GeoBox? bbox,
@@ -280,6 +369,8 @@ class ShelterService {
       type: type,
       keyword: keyword,
       hazards: hazards,
+      disasters: disasters,
+      spaces: spaces,
       matchMode: matchMode,
       bbox: bbox,
     );

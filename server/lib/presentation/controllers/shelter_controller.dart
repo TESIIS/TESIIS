@@ -26,9 +26,12 @@ class _ShelterQuery {
     required this.villages,
     required this.type,
     required this.hazards,
+    required this.disasters,
+    required this.spaces,
     required this.matchMode,
     required this.bbox,
     required this.bboxError,
+    required this.groupError,
   });
 
   final String? q;
@@ -38,6 +41,14 @@ class _ShelterQuery {
   final List<String>? villages;
   final String? type;
   final Map<String, String> hazards;
+
+  /// Chinese hazard keys from `?disasters=flood,landslide` (mapped through
+  /// [_hazardAliases]) — ORed within the group by the service.
+  final Set<String>? disasters;
+
+  /// Same, for `?spaces=indoor,outdoor`.
+  final Set<String>? spaces;
+
   final String matchMode;
 
   /// Parsed `?bbox=minLng,minLat,maxLng,maxLat`, or null if not given.
@@ -48,12 +59,22 @@ class _ShelterQuery {
   /// ignoring a malformed box.
   final String? bboxError;
 
+  /// Set instead of [disasters]/[spaces] when a group carries a key that is
+  /// not a known hazard, so the handler can 400 rather than silently
+  /// dropping a filter the client thought it applied.
+  final String? groupError;
+
   /// A box larger than this is rejected: the whole point of `bbox` is to let
   /// a client ask for "what's on screen", not download the entire country in
   /// one response. ~2° is generous enough for any real map viewport.
   static const _maxBboxDegrees = 2.0;
 
-  static (GeoBox?, String?) _parseBbox(String? raw) {
+  /// `/shelters/clusters` caps bbox far more loosely — its response is
+  /// centroids, not records, so payload size is not a reason to force the
+  /// client to tile a country-wide viewport into 2° requests.
+  static const _maxClusterBboxDegrees = 6.0;
+
+  static (GeoBox?, String?) _parseBbox(String? raw, double maxDegrees) {
     if (raw == null || raw.isEmpty) return (null, null);
     final parts = raw.split(',');
     if (parts.length != 4) {
@@ -70,11 +91,10 @@ class _ShelterQuery {
     if (minLng >= maxLng || minLat >= maxLat) {
       return (null, 'bbox min must be less than max on each axis');
     }
-    if (maxLng - minLng > _maxBboxDegrees ||
-        maxLat - minLat > _maxBboxDegrees) {
+    if (maxLng - minLng > maxDegrees || maxLat - minLat > maxDegrees) {
       return (
         null,
-        'bbox must not exceed $_maxBboxDegrees° on either axis — '
+        'bbox must not exceed $maxDegrees° on either axis — '
             'use GET /api/regions for a country-wide view',
       );
     }
@@ -93,7 +113,45 @@ class _ShelterQuery {
     'outdoor': '室外',
   };
 
-  factory _ShelterQuery.from(Request request) {
+  /// The keys a group parameter accepts, mapped to the Chinese column names
+  /// the service filters on. English-only on the wire for groups — the flat
+  /// `?flood=Y` params stay bilingual for compatibility.
+  static const _groupAliases = {
+    'disasters': {
+      'flood': '水災',
+      'earthquake': '震災',
+      'landslide': '土石流',
+      'tsunami': '海嘯',
+    },
+    'spaces': {
+      'indoor': '室內',
+      'outdoor': '室外',
+    },
+  };
+
+  static (Set<String>?, String?) _parseGroup(String? raw, String param) {
+    if (raw == null || raw.trim().isEmpty) return (null, null);
+    final aliases = _groupAliases[param]!;
+    final tokens = raw
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final unknown = tokens.where((t) => !aliases.containsKey(t));
+    if (unknown.isNotEmpty) {
+      final valid = aliases.keys.join(', ');
+      return (
+        null,
+        '$param contains unknown key "${unknown.first}" (valid: $valid)',
+      );
+    }
+    return ({for (final t in tokens) aliases[t]!}, null);
+  }
+
+  factory _ShelterQuery.from(
+    Request request, {
+    double maxBboxDegrees = _maxBboxDegrees,
+  }) {
     final params = request.url.queryParameters;
 
     final hazards = <String, String>{};
@@ -110,7 +168,10 @@ class _ShelterQuery {
       for (final value in rawVillages) ...ShelterText.splitVillages(value),
     ];
 
-    final (bbox, bboxError) = _parseBbox(params['bbox']);
+    final (bbox, bboxError) = _parseBbox(params['bbox'], maxBboxDegrees);
+
+    final (disasters, disastersError) = _parseGroup(params['disasters'], 'disasters');
+    final (spaces, spacesError) = _parseGroup(params['spaces'], 'spaces');
 
     return _ShelterQuery(
       q: params['q'],
@@ -120,11 +181,14 @@ class _ShelterQuery {
       villages: villages.isEmpty ? null : villages,
       type: params['type'] ?? params['類型'],
       hazards: hazards,
+      disasters: disasters,
+      spaces: spaces,
       matchMode: (params['match'] ?? 'and').toLowerCase() == 'or'
           ? 'or'
           : 'and',
       bbox: bbox,
       bboxError: bboxError,
+      groupError: disastersError ?? spacesError,
     );
   }
 
@@ -136,6 +200,8 @@ class _ShelterQuery {
     if (villages != null) 'villages': villages,
     if (type != null) 'type': type,
     if (hazards.isNotEmpty) 'hazards': hazards,
+    if (disasters != null) 'disasters': disasters!.toList(),
+    if (spaces != null) 'spaces': spaces!.toList(),
     'match': matchMode,
     if (bbox != null)
       'bbox': [bbox!.minLng, bbox!.minLat, bbox!.maxLng, bbox!.maxLat],
@@ -151,6 +217,7 @@ class ShelterController {
   Router get router {
     final r = Router();
     r.get('/shelters', _getShelters);
+    r.get('/shelters/clusters', _getShelterClusters);
     r.get('/shelters/stats', _getShelterStats);
     r.get('/shelters/nearby', _getNearbyShelters);
     r.get('/regions', _getRegions);
@@ -192,6 +259,8 @@ class ShelterController {
         type: query.type,
         keyword: query.q,
         hazards: query.hazards.isEmpty ? null : query.hazards,
+        disasters: query.disasters,
+        spaces: query.spaces,
         matchMode: query.matchMode,
         bbox: query.bbox,
       );
@@ -248,6 +317,7 @@ class ShelterController {
     try {
       final query = _ShelterQuery.from(request);
       if (query.bboxError != null) return _badRequest(query.bboxError!);
+      if (query.groupError != null) return _badRequest(query.groupError!);
 
       final params = request.url.queryParameters;
       // limit/offset page the *filtered* result, not the upstream fetch.
@@ -278,10 +348,54 @@ class ShelterController {
     }
   }
 
+  /// `GET /api/shelters/clusters?bbox=&zoom=&disasters=&spaces=`
+  ///
+  /// Grid-clustered markers for a map viewport. The response is centroids
+  /// plus counts, not records — a country-wide view transfers a few hundred
+  /// bubbles instead of thousands of shelters — so unlike the other
+  /// endpoints the bbox cap is generous and omitting bbox means "everything"
+  /// rather than "nothing". Single-member clusters embed the full shelter so
+  /// the client can open a detail sheet without a follow-up request.
+  Future<Response> _getShelterClusters(Request request) async {
+    try {
+      final query = _ShelterQuery.from(
+        request,
+        maxBboxDegrees: _ShelterQuery._maxClusterBboxDegrees,
+      );
+      if (query.bboxError != null) return _badRequest(query.bboxError!);
+      if (query.groupError != null) return _badRequest(query.groupError!);
+
+      final zoom = double.tryParse(request.url.queryParameters['zoom'] ?? '');
+      if (zoom == null || zoom < 6 || zoom > 19) {
+        return _badRequest('zoom is required and must be between 6 and 19');
+      }
+
+      final filtered = _applyFilters(await service.fetchAllShelters(), query);
+      final clusters = service.clusterShelters(data: filtered, zoom: zoom);
+
+      return _ok({
+        'success': true,
+        ..._dataMeta(),
+        'filters': query.toJson(),
+        'zoom': zoom,
+        'clusters': [
+          for (final c in clusters)
+            if (c.shelter case final s?)
+              {'count': 1, 'lat': c.lat, 'lng': c.lng, 'shelter': _toJson(s)}
+            else
+              {'count': c.count, 'lat': c.lat, 'lng': c.lng},
+        ],
+      });
+    } catch (e, s) {
+      return _serverError('GET /shelters/clusters', e, s);
+    }
+  }
+
   Future<Response> _getShelterStats(Request request) async {
     try {
       final query = _ShelterQuery.from(request);
       if (query.bboxError != null) return _badRequest(query.bboxError!);
+      if (query.groupError != null) return _badRequest(query.groupError!);
 
       // Off by default — see ShelterService.computeStats's doc comment.
       // ?include=items,shelters opts back in.
@@ -298,6 +412,8 @@ class ShelterController {
         villages: query.villages,
         type: query.type,
         hazards: query.hazards.isEmpty ? null : query.hazards,
+        disasters: query.disasters,
+        spaces: query.spaces,
         keyword: query.q,
         matchMode: query.matchMode,
         bbox: query.bbox,
@@ -356,6 +472,7 @@ class ShelterController {
 
       final query = _ShelterQuery.from(request);
       if (query.bboxError != null) return _badRequest(query.bboxError!);
+      if (query.groupError != null) return _badRequest(query.groupError!);
       final filtered = _applyFilters(await service.fetchAllShelters(), query);
 
       final withDistance = <(Shelter, double)>[];
