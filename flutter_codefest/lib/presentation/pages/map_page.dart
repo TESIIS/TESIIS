@@ -49,7 +49,7 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _viewModel = ShelterMapViewModel();
-    _handleLocate();
+    unawaited(_handleLocate());
   }
 
   @override
@@ -71,6 +71,8 @@ class _MapPageState extends State<MapPage> {
       _mapController.camera.visibleBounds,
       _mapController.camera.zoom,
     );
+    final here = _viewModel.currentLatLng;
+    if (here != null) _mapController.move(here, _mapController.camera.zoom);
   }
 
   /// Fires continuously while the map moves, so the real work is debounced
@@ -80,6 +82,11 @@ class _MapPageState extends State<MapPage> {
     _idleTimer = Timer(MapConstants.idleDebounce, () {
       if (!mounted || _viewModel.isSearching) return;
       _viewModel.loadClusters(camera.visibleBounds, camera.zoom);
+      unawaited(
+        _viewModel.refreshNearbyShelters(
+          radiusMeters: MapConstants.nearbyRadiusForZoom(camera.zoom),
+        ),
+      );
     });
   }
 
@@ -133,9 +140,12 @@ class _MapPageState extends State<MapPage> {
   // ---------------------------------------------------------------------
 
   Future<void> _handleLocate() async {
-    await _viewModel.getCurrentLocation();
+    const targetZoom = 15.0;
+    await _viewModel.getCurrentLocation(
+      radiusMeters: MapConstants.nearbyRadiusForZoom(targetZoom),
+    );
     final here = _viewModel.currentLatLng;
-    if (here != null && _isMapReady) _mapController.move(here, 15.0);
+    if (here != null && _isMapReady) _mapController.move(here, targetZoom);
   }
 
   /// Hands [shelter] to whatever map app the device has.

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:latlong2/latlong.dart';
 
 /// Magic numbers that used to live inline in the map screen.
@@ -10,8 +12,28 @@ class MapConstants {
   /// user picks a shelter.
   static const LatLng taiwanCenter = LatLng(23.7, 121.0);
 
-  /// Radius of the "what is around here" circle, in metres.
+  /// Baseline radius of the "what is around here" circle, in metres.
   static const double visibleRadiusMeters = 1500;
+
+  /// The zoom level where [visibleRadiusMeters] is used as-is.
+  static const double visibleRadiusZoom = 15;
+
+  /// Smallest nearby search radius, in metres, for close street-level views.
+  static const double minVisibleRadiusMeters = 300;
+
+  /// Largest nearby search radius, in metres, for zoomed-out browsing.
+  static const double maxVisibleRadiusMeters = 20000;
+
+  /// Nearby search radius that tracks the map zoom.
+  ///
+  /// Every zoom level out doubles the covered map area; every zoom level in
+  /// halves it. The clamp keeps the server query useful at both extremes.
+  static double nearbyRadiusForZoom(double zoom) {
+    final radius = visibleRadiusMeters * math.pow(2, visibleRadiusZoom - zoom);
+    return radius
+        .clamp(minVisibleRadiusMeters, maxVisibleRadiusMeters)
+        .toDouble();
+  }
 
   /// How long the map must sit still before recomputing what is in range.
   static const Duration idleDebounce = Duration(milliseconds: 300);

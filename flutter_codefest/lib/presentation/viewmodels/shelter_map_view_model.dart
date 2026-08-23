@@ -29,11 +29,17 @@ typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
 typedef RequestPermission = Future<LocationPermission> Function();
 typedef GetCurrentPosition = Future<Position> Function();
+typedef GetLastKnownPosition = Future<Position?> Function();
 typedef CacheGet = Future<CachedResponse?> Function(String key);
 typedef CachePut = Future<void> Function(String key, Map<String, dynamic> body);
 
-Future<Position> _defaultGetCurrentPosition() =>
-    Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+Future<Position> _defaultGetCurrentPosition() => Geolocator.getCurrentPosition(
+  desiredAccuracy: LocationAccuracy.medium,
+  timeLimit: const Duration(seconds: 5),
+);
+
+Future<Position?> _defaultGetLastKnownPosition() =>
+    Geolocator.getLastKnownPosition();
 
 /// Holds every piece of mutable state the map screen used to keep in its
 /// `State` object, plus the logic that used to live in its methods.
@@ -53,6 +59,7 @@ class ShelterMapViewModel extends ChangeNotifier {
     CheckPermission checkPermission = Geolocator.checkPermission,
     RequestPermission requestPermission = Geolocator.requestPermission,
     GetCurrentPosition getCurrentPosition = _defaultGetCurrentPosition,
+    GetLastKnownPosition getLastKnownPosition = _defaultGetLastKnownPosition,
     CacheGet cacheGet = RequestCache.get,
     CachePut cachePut = RequestCache.put,
   }) : _fetchClusters = fetchClusters,
@@ -62,6 +69,7 @@ class ShelterMapViewModel extends ChangeNotifier {
        _checkPermission = checkPermission,
        _requestPermission = requestPermission,
        _getCurrentPosition = getCurrentPosition,
+       _getLastKnownPosition = getLastKnownPosition,
        _cacheGet = cacheGet,
        _cachePut = cachePut;
 
@@ -72,6 +80,7 @@ class ShelterMapViewModel extends ChangeNotifier {
   final CheckPermission _checkPermission;
   final RequestPermission _requestPermission;
   final GetCurrentPosition _getCurrentPosition;
+  final GetLastKnownPosition _getLastKnownPosition;
   final CacheGet _cacheGet;
   final CachePut _cachePut;
 
@@ -111,9 +120,11 @@ class ShelterMapViewModel extends ChangeNotifier {
   /// stale answer and must not overwrite newer state.
   int _clusterRequestId = 0;
   int _searchRequestId = 0;
+  int _nearbyRequestId = 0;
 
   LatLngBounds? _lastBounds;
   double _lastZoom = MapConstants.nationwideZoom;
+  double _nearbyRadiusMeters = MapConstants.visibleRadiusMeters;
 
   // ---------------------------------------------------------------------
   // Read-only state
@@ -121,6 +132,7 @@ class ShelterMapViewModel extends ChangeNotifier {
 
   List<ShelterCluster> get clusters => _clusters;
   List<Shelter> get nearbyShelters => _nearbyShelters;
+  double get nearbyRadiusMeters => _nearbyRadiusMeters;
   List<Shelter> get searchResults => _searchResults;
   int get searchTotal => _searchTotal;
   bool get searchHasMore => _searchHasMore;
@@ -410,7 +422,7 @@ class ShelterMapViewModel extends ChangeNotifier {
     return null;
   }
 
-  Future<void> getCurrentLocation() async {
+  Future<void> getCurrentLocation({double? radiusMeters}) async {
     _isLoadingLocation = true;
     _locationMessage = null;
     notifyListeners();
@@ -423,39 +435,24 @@ class ShelterMapViewModel extends ChangeNotifier {
         return;
       }
 
+      final requestedRadius = radiusMeters ?? _nearbyRadiusMeters;
+      final lastKnown = await _getLastKnownPosition();
+      if (_isValidPosition(lastKnown)) {
+        await _applyLocatedPosition(lastKnown!, requestedRadius);
+        _isLoadingLocation = false;
+        notifyListeners();
+        unawaited(_refreshCurrentPosition(requestedRadius));
+        return;
+      }
+
       final position = await _getCurrentPosition();
-      if (position.latitude == 0.0 && position.longitude == 0.0) {
+      if (!_isValidPosition(position)) {
         _locationMessage = '取得位置失敗: 無效的座標';
         _isLocationSuccess = false;
         return;
       }
 
-      _currentPosition = position;
-      // The nearby panel now asks the server instead of scanning the full
-      // dataset client-side.
-      try {
-        _nearbyShelters = await _fetchNearby(
-          lat: position.latitude,
-          lng: position.longitude,
-          radiusMeters: MapConstants.visibleRadiusMeters,
-          limit: 5,
-        );
-      } catch (_) {
-        _nearbyShelters = const [];
-      }
-
-      _locationMessage =
-          '已定位: ${position.latitude.toStringAsFixed(4)}, '
-          '${position.longitude.toStringAsFixed(4)}';
-      _isLocationSuccess = true;
-
-      _messageDismissTimer?.cancel();
-      _messageDismissTimer = Timer(const Duration(seconds: 3), () {
-        if (_isLocationSuccess && _locationMessage != null) {
-          _locationMessage = null;
-          notifyListeners();
-        }
-      });
+      await _applyLocatedPosition(position, requestedRadius);
     } catch (e) {
       _locationMessage = '無法取得位置: $e';
       _isLocationSuccess = false;
@@ -464,6 +461,75 @@ class ShelterMapViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> refreshNearbyShelters({double? radiusMeters}) async {
+    final position = _currentPosition;
+    if (position == null) return;
+
+    final requestedRadius = radiusMeters ?? _nearbyRadiusMeters;
+    if ((requestedRadius - _nearbyRadiusMeters).abs() < 1) return;
+
+    await _loadNearbyShelters(position, requestedRadius);
+    notifyListeners();
+  }
+
+  Future<void> _refreshCurrentPosition(double radiusMeters) async {
+    try {
+      final position = await _getCurrentPosition();
+      if (!_isValidPosition(position)) return;
+      await _applyLocatedPosition(position, radiusMeters);
+      notifyListeners();
+    } catch (_) {
+      // A cached location is already on screen. Keep it if the fresh fix
+      // times out, which is common on first page load in browsers.
+    }
+  }
+
+  Future<void> _applyLocatedPosition(
+    Position position,
+    double radiusMeters,
+  ) async {
+    _currentPosition = position;
+    await _loadNearbyShelters(position, radiusMeters);
+
+    _locationMessage =
+        '已定位: ${position.latitude.toStringAsFixed(4)}, '
+        '${position.longitude.toStringAsFixed(4)}';
+    _isLocationSuccess = true;
+
+    _messageDismissTimer?.cancel();
+    _messageDismissTimer = Timer(const Duration(seconds: 3), () {
+      if (_isLocationSuccess && _locationMessage != null) {
+        _locationMessage = null;
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<void> _loadNearbyShelters(
+    Position position,
+    double radiusMeters,
+  ) async {
+    final id = ++_nearbyRequestId;
+    _nearbyRadiusMeters = radiusMeters;
+    try {
+      final nearby = await _fetchNearby(
+        lat: position.latitude,
+        lng: position.longitude,
+        radiusMeters: radiusMeters,
+        limit: 5,
+      );
+      if (id != _nearbyRequestId) return;
+      _nearbyShelters = nearby;
+    } catch (_) {
+      if (id != _nearbyRequestId) return;
+      _nearbyShelters = const [];
+    }
+  }
+
+  static bool _isValidPosition(Position? position) =>
+      position != null &&
+      !(position.latitude == 0.0 && position.longitude == 0.0);
 
   @override
   void dispose() {

@@ -34,6 +34,7 @@ ShelterMapViewModel _viewModel({
   nearby,
   Future<CachedResponse?> Function(String key)? cacheGet,
   Future<void> Function(String key, Map<String, dynamic> body)? cachePut,
+  Future<Position?> Function()? getLastKnownPosition,
 }) => ShelterMapViewModel(
   fetchClusters: clusters ?? (params) async => const [],
   fetchShelterPage:
@@ -45,6 +46,7 @@ ShelterMapViewModel _viewModel({
       ({required lat, required lng, radiusMeters, limit = 10}) async =>
           const [],
   isLocationServiceEnabled: () async => false,
+  getLastKnownPosition: getLastKnownPosition ?? () async => null,
   cacheGet: cacheGet ?? (key) async => null,
   cachePut: cachePut ?? (key, body) async {},
 );
@@ -420,6 +422,7 @@ void main() {
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.always,
         requestPermission: () async => LocationPermission.always,
+        getLastKnownPosition: () async => null,
         getCurrentPosition: () async => fakePosition(lat: 25.0, lng: 121.5),
         cacheGet: (key) async => null,
         cachePut: (key, body) async {},
@@ -432,6 +435,33 @@ void main() {
       expect(nearbyCall?['lat'], 25.0);
       expect(nearbyCall?['lng'], 121.5);
       expect(nearbyCall?['radius'], 1500);
+    });
+
+    test('refreshes nearby shelters with the current zoom radius', () async {
+      final radii = <double>[];
+      final vm = ShelterMapViewModel(
+        fetchClusters: (params) async => const [],
+        fetchShelterPage: (params) async =>
+            const ShelterPage(shelters: [], total: 0, truncated: false),
+        fetchNearby:
+            ({required lat, required lng, radiusMeters, limit = 10}) async {
+              radii.add(radiusMeters ?? 0);
+              return [fakeShelter(id: radii.length, lat: lat, lng: lng)];
+            },
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.always,
+        requestPermission: () async => LocationPermission.always,
+        getLastKnownPosition: () async => null,
+        getCurrentPosition: () async => fakePosition(lat: 25.0, lng: 121.5),
+        cacheGet: (key) async => null,
+        cachePut: (key, body) async {},
+      );
+
+      await vm.getCurrentLocation(radiusMeters: 1500);
+      await vm.refreshNearbyShelters(radiusMeters: 3000);
+
+      expect(radii, [1500, 3000]);
+      expect(vm.nearbyRadiusMeters, 3000);
     });
   });
 
