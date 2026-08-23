@@ -1,8 +1,8 @@
-# 台灣避難收容處所地圖
+# TESIIS 臺灣避難收容處所地圖
 
 用地圖快速查詢全臺避難收容處所，查看最近設施、搜尋條件、座標可信度，並可直接交給手機上的地圖 App 導航。
 
-本專案源自 2025 臺北程式設計節城市通微服務大黑客松團隊 30 的作品。現在是可獨立部署的 Flutter Web，不依賴臺北通 SDK、登入狀態或 Google Maps API Key。
+本專案源自 2025 臺北程式設計節城市通微服務大黑客松團隊 30 的作品。經持續維護後現為可獨立部署的 Flutter Web，不依賴臺北通 SDK、登入狀態或 Google Maps API Key。
 
 > 本系統是查詢輔助工具，並非官方災害應變系統。災害發生時，請以各地政府的即時公告與指示為準。
 
@@ -143,7 +143,7 @@ curl 'http://localhost:8080/api/regions?city=臺北市'
 | `LOG_LEVEL` | `info` | `debug`、`info`、`warn` 或 `error` |
 | `NFA_POINT_FILE_URL` | 消防署官方網址 | 覆寫點位檔來源 |
 
-`.env` 不應提交到版本控制。任何服務憑證都只能留在伺服器環境中，不能寫入 Flutter Web bundle 或提交至 Git。
+`.env` 不應提交到版本控制。若啟用選用的交通資料功能，`TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 只能留在伺服器環境中。
 
 ## 測試與 CI
 
