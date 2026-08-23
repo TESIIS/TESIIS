@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
+import 'package:flutter_codefest/domain/marker_clustering.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
@@ -60,6 +63,46 @@ Marker _shelterMarker(
   );
 }
 
+/// A cluster of 2+ shelters too close together to draw individually at the
+/// current zoom — a circle with a count, tapped to zoom in on the group.
+Marker _clusterMarker(
+  ShelterCluster cluster, {
+  required void Function(ShelterCluster cluster) onTap,
+}) {
+  final size = 36.0 + math.min(cluster.count, 40) * 0.6;
+  return Marker(
+    key: ValueKey(
+      'cluster-${cluster.center.latitude}-${cluster.center.longitude}-${cluster.count}',
+    ),
+    point: cluster.center,
+    width: size,
+    height: size,
+    child: Semantics(
+      button: true,
+      label: '${cluster.count} 個避難設施，點擊放大查看',
+      child: GestureDetector(
+        onTap: () => onTap(cluster),
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.deepOrange.withValues(alpha: 0.85),
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '${cluster.count}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 Marker _currentLocationMarker(LatLng point) => Marker(
   key: const ValueKey('current-location'),
   point: point,
@@ -77,18 +120,26 @@ Marker _currentLocationMarker(LatLng point) => Marker(
 
 /// Builds the marker layer for the shelters currently on screen, plus the
 /// current-location marker when a fix is available.
+///
+/// [clusters] groups nearby shelters together (see `marker_clustering.dart`)
+/// so a broad nationwide search or a dense district doesn't render thousands
+/// of individual widgets. A single-member cluster renders as a normal pin;
+/// anything larger renders as a count bubble that zooms in on tap.
 List<Marker> buildShelterMarkers({
-  required List<Shelter> shelters,
+  required List<ShelterCluster> clusters,
   required Shelter? selectedShelter,
   required LatLng? currentLatLng,
   required void Function(Shelter shelter) onTap,
+  required void Function(ShelterCluster cluster) onClusterTap,
 }) => [
-  for (final shelter in shelters)
-    if (shelter.hasCoordinate)
+  for (final cluster in clusters)
+    if (cluster.isSingle)
       _shelterMarker(
-        shelter,
-        isSelected: selectedShelter?.shelterId == shelter.shelterId,
+        cluster.single,
+        isSelected: selectedShelter?.shelterId == cluster.single.shelterId,
         onTap: onTap,
-      ),
+      )
+    else
+      _clusterMarker(cluster, onTap: onClusterTap),
   if (currentLatLng != null) _currentLocationMarker(currentLatLng),
 ];

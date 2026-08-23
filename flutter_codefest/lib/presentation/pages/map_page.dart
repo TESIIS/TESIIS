@@ -5,6 +5,7 @@ import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/theme/app_status_colors.dart';
 import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
+import 'package:flutter_codefest/domain/marker_clustering.dart';
 import 'package:flutter_codefest/domain/navigation_service.dart';
 import 'package:flutter_codefest/presentation/pages/data_quality_page.dart';
 import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
@@ -100,6 +101,15 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  /// Zooms in on a cluster rather than trying to select one of its members —
+  /// at nationwide scale a broad search or a dense district can group dozens
+  /// of shelters into one bubble, and there is no single "the" shelter to
+  /// open a detail sheet for.
+  void _onClusterTapped(ShelterCluster cluster) {
+    if (!_isMapReady) return;
+    _mapController.move(cluster.center, _mapController.camera.zoom + 2);
+  }
+
   // ---------------------------------------------------------------------
   // Search
   // ---------------------------------------------------------------------
@@ -191,11 +201,16 @@ class _MapPageState extends State<MapPage> {
             ),
           ];
 
+    final clusters = clusterShelters([
+      for (final s in vm.markerShelters)
+        if (s.hasCoordinate) s,
+    ], zoom: _isMapReady ? _mapController.camera.zoom : 12.0);
     final markers = buildShelterMarkers(
-      shelters: vm.markerShelters,
+      clusters: clusters,
       selectedShelter: vm.selectedShelter,
       currentLatLng: vm.currentLatLng,
       onTap: _onMarkerTapped,
+      onClusterTap: _onClusterTapped,
     );
 
     final showNearbyPanel =
