@@ -21,6 +21,11 @@
 - 步行時間概估（直線距離 ÷ 1.4 m/s），顯示在避難所詳情與最近避難所面板；明確標示為概算而非真實路線。
 - `/shelters/stats` 的 `byRegion` 新增每個縣市／鄉鎮／村里的座標品質統計（`coordinateQuality`：`total`／`withCoordinates`／`missing`／`bySource`／`byConfidence`），供資料品質頁面使用。前端新增「座標資料品質」頁，依缺座標數排序列出各鄉鎮。
 - `e2e/`：Playwright 端對端煙霧測試（首頁載入、搜尋、開啟避難所詳情），對著 `docker compose up --build` 的完整站台跑；CI 新增對應 job。
+- **全國化：主資料源換成消防署全國避難收容處所點位檔。** 新增 `server/tool/build_nationwide_snapshot.dart`，直接下載已含座標的全國點位檔（22 縣市、5,973 筆），逐縣市座標品質閘門驗證後產生並 commit `server/data/shelters_nationwide.csv`（5,854 筆通過，98.0%）與 `server/data/shelters_rejected.csv`（含拒絕原因）。`server/lib/core/geo/taiwan_bounds.dart` 取代 `taipei_bounds.dart`，改成 22 縣市各自的 bounding box（金門縣因烏坵鄉飛地需要兩個 box）。臺北市既有的 `build_coordinates.dart`／`shelter_coordinates.csv` 保留不動，作為次要資料源與授權來源記錄。
+- **既有 API 線上契約（中文 key）維持不變**，全國化屬於內部資料源替換，`/api/shelters`、`/api/shelters/stats`、`/api/shelters/nearby` 的既有欄位不改不刪；新增 `核子事故`（NFA 才有的災害類型）、`truncated`（分頁是否被截斷）、`snapshotUpdatedAt`／`dataSource`／`dataFreshness` 中繼資料。
+- `GET /api/regions[?city=]`：22 縣市（或指定縣市的鄉鎮）清單，各自帶座標品質統計，供縣市選擇器與資料品質頁面使用。
+- `/shelters`、`/shelters/stats`、`/shelters/nearby` 新增 `?bbox=minLng,minLat,maxLng,maxLat` 過濾（上限 2° × 2°）。
+- 前端新增自寫網格式 marker clustering（`flutter_codefest/lib/domain/marker_clustering.dart`），避免全國搜尋或密集行政區一次渲染數千個 marker widget；刻意不加現成套件，理由與 `csv_codec.dart` 手刻 CSV parser 相同。搜尋結果新增縣市／鄉鎮前綴，避免全國同名設施（「活動中心」「○○國小」）無法辨識。
 
 ### Changed
 
@@ -32,9 +37,14 @@
 - 前端災害條件送出值從 `'true'` 改為 `'Y'`，與 API 文件一致。
 - `/shelters` 與 `/shelters/stats` 統一取用同一份資料，不再一個抓 3000 筆、一個抓 2000 筆。
 - 導航連結的 `travelmode` 從 `driving` 改為 `walking`——這是避難步行導引，不是開車導航。
+- 地圖預設中心點從臺北車站改成臺灣地理中心（南投埔里附近），拿掉「超出臺北市範圍」警語——全國資料下這個警語本身就是錯的。
+- `server/lib/domain/services/shelter_service.dart` 的 `computeStats`：`items` 與每層 `villages`/`townships` 內嵌的 `shelters` 陣列改成預設不回傳，`?include=items,shelters` 才加。401 筆臺北市資料時無過濾的 `/shelters/stats` 還好，5,854 筆全國資料會讓同一筆資料在回應裡重複出現 2-3 次、變成好幾 MB 的 JSON——這是全國化後第一個會壞掉的端點，資料品質頁面正好打這支 API。
 
 ### Fixed
 
+- `GET /shelters` 的 `limit` 預設值 1000：401 筆臺北市資料時從沒觸發過，換成全國 5,854 筆後前端會**默默拿到被砍掉三分之二的清單、卻沒有任何錯誤或截斷提示**。預設值改成 `Env.maxSnapshotItems`（8000），並新增 `truncated` 欄位讓 client 隨時能判斷清單是否完整。
+- `HazardFlag.normalizeForOutput` 只把「是」正規化成 `Y`，沒有對應把「否」正規化成 `N`——臺北市資料的災害欄位本來就是原生 `N`，這條路徑從沒被踩過，直到全國資料用「是／否」才讓 `"室內":"Y"` 旁邊出現 `"室外":"否"` 這種不一致的 API 輸出。
+- 全國資料的座標品質閘門用 FNV-1a 雜湊產生 `收容所編號`，Dart 原生 `int` 是固定 64-bit 沒有 bignum 自動升級，雜湊值 sign bit 為 1 時 `toRadixString` 會印出帶負號的字串（例如 `NFA-CHA--1186...`）而非乾淨的十六進位。
 - **篩選與搜尋結果被截斷成最多 5 筆。** `getNearestShelters` 的 `limit` 預設值是 5，卻被當作單純的排序函式呼叫。已拆成 `sortedByDistance`（不截斷）與 `nearestShelters(limit:)`。
 - 地圖更新的 `_isUpdating` 旗標沒有 `try/finally` 保護，中途拋例外會永久卡死，地圖不再更新。
 - iOS `Info.plist` 缺少 `NSLocationWhenInUseUsageDescription`，取得定位時會直接 crash。
