@@ -5,6 +5,7 @@ import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/presentation/widgets/common/coordinate_notice.dart';
 import 'package:flutter_codefest/presentation/widgets/common/disaster_chip.dart';
 import 'package:flutter_codefest/presentation/widgets/common/info_row.dart';
+import 'package:flutter_codefest/presentation/widgets/shelter/nearby_transit_section.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// A shelter's full detail.
@@ -265,6 +266,13 @@ class ShelterDetailSheet extends StatelessWidget {
           _ => '',
         },
       ),
+
+      if (shelter.hasCoordinate)
+        NearbyTransitSection(
+          lat: shelter.latitude!,
+          lng: shelter.longitude!,
+          city: shelter.city,
+        ),
 
       const SizedBox(height: 16),
       _SectionTitle('聯絡資訊'),
