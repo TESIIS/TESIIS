@@ -149,4 +149,18 @@ test.describe('shelter web smoke', () => {
       expect(region.count, `${region.city} has zero shelters`).toBeGreaterThan(0);
     }
   });
+
+  test('search shows the empty state for a query with no matches', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    await page.goto('/');
+    await enableSemantics(page);
+
+    await page.getByRole('button', { name: '搜尋' }).click();
+    await searchShelters(page, 'zzz這個地名不存在9999');
+
+    await expect(page.getByText('找不到相似的結果')).toBeVisible({
+      timeout: 15_000,
+    });
+  });
 });
