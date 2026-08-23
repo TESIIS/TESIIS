@@ -9,7 +9,7 @@
 > | Phase 1 — 全國資料模型與快照 | ✅ 完成 | 快照 5,854 筆／22 縣市，拒絕 119 筆 |
 > | Phase 2 — API 擴充 | ✅ 完成 | 另超出規劃做了 `/shelters/clusters` |
 > | Phase 3 — 全國 Web UX | ✅ 完成 | 低速網路與空資料測試尚未加入 |
-> | Phase 4 — TDX 交通資訊 | ⬜ 未開始 | 只有 `city_codes.dart` 的 `tdxName` 對照 |
+> | Phase 4 — TDX 交通資訊 | ✅ 完成 | `TdxClient` + `/api/transit/nearby`；不含捷運 |
 > | Phase 5 — 發布與維運 | 🟡 部分完成 | 有自動部署與每週上游檢查；未推 GHCR multi-arch image |
 
 ## 目標
@@ -117,18 +117,23 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 
 驗收門檻：全國初始載入不下載完整明細；一般行動裝置可在 3 秒內操作第一個畫面。
 
-### Phase 4 — TDX 交通資訊 ⬜
+### Phase 4 — TDX 交通資訊 ✅
 
-> 未開始。目前只有 `server/lib/core/geo/city_codes.dart` 保留了 22 縣市對應 TDX
-> `{City}` 路徑參數的 `tdxName` 欄位；沒有 `TdxClient`、沒有 TDX 相依、沒有憑證。
+> 已完成。`server/lib/data/datasources/external/tdx_client.dart` 處理 OAuth2
+> client-credentials token 快取（24 小時效期，提前 60 秒重抓）與失敗 backoff；
+> `GET /api/transit/nearby?lat=&lng=&city=&radius=&limit=` 平行查詢公車
+> （`Bus/Stop/City/{tdxName}`，需要 `city` 才會查）、台鐵、高鐵（皆
+> `$spatialFilter=nearby(...)`，TDX 硬限制半徑 1000m），依距離排序合併回傳；
+> 任一子系統失敗會標記 `partial: true` 而不是整體失敗，全部失敗或未設定憑證則
+> 回 503 `{"available":false}`。前端 `NearbyTransitSection` 掛在避難所詳情頁，
+> 不可用時整段不顯示。
+>
+> **範圍內沒做**：捷運（Metro）——TDX 沒有跨系統的全國「附近站點」端點，捷運
+> 要先判斷是哪個系統（TRTC/KRTC/TYMC/…）才能查，複雜度高但涵蓋範圍小，留待
+> 之後有需要再做。
 
-- 新增 server-side `TdxClient`，實作 token expiry buffer、timeout、retry、快取與
-  circuit breaker。
-- 將中文縣市名稱映射到 TDX City/County code。
-- 先做「避難所附近公共運輸站點」唯讀功能，不讓 TDX 故障阻斷避難所主流程。
-- UI 與文件依 TDX 規範標示資料來源。
-
-驗收門檻：沒有 TDX credentials 時主站仍可用；TDX timeout 時回傳可辨識的降級狀態。
+驗收門檻：沒有 TDX credentials 時主站仍可用；TDX timeout 時回傳可辨識的降級狀態
+——皆已用真實 TDX 憑證與瀏覽器 smoke test 驗證過。
 
 ### Phase 5 — 發布與維運 🟡
 

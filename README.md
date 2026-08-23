@@ -21,6 +21,7 @@
 - 顯示設施座標品質與資料來源，避免把概略位置誤認為精確入口。
 - 使用內政部國土測繪中心 WMTS 底圖，可切換電子、地形與正射影像底圖。
 - 可從設施詳情一鍵開啟外部地圖導航。
+- 設施詳情顯示附近公車站／台鐵／高鐵站與距離（選填功能，需設定 TDX 憑證）。
 
 ## 快速開始
 
@@ -85,6 +86,8 @@ Dart Shelf API
   +-- 消防署避難收容處所點位檔（執行期快取）
   |
   +-- 進版控的全國快照（上游失敗時的備援）
+  |
+  +-- TDX 運輸資料流通服務（選填，附近公車／台鐵／高鐵站；未設定憑證時停用）
 ```
 
 | 目錄 | 用途 |
@@ -130,6 +133,7 @@ dart run tool/build_nationwide_snapshot.dart --refresh --report
 | `GET /api/shelters/clusters` | 依地圖範圍與縮放層級取得分群標記 |
 | `GET /api/shelters/stats` | 資料筆數與座標品質統計 |
 | `GET /api/regions` | 縣市或鄉鎮的資料品質摘要 |
+| `GET /api/transit/nearby` | 避難所附近的公車站／台鐵／高鐵站（需設定 TDX 憑證，見下） |
 
 常用請求範例：
 
@@ -137,7 +141,15 @@ dart run tool/build_nationwide_snapshot.dart --refresh --report
 curl 'http://localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&limit=3'
 curl 'http://localhost:8080/api/shelters/clusters?bbox=121.45,25.00,121.60,25.10&zoom=13'
 curl 'http://localhost:8080/api/regions?city=臺北市'
+curl 'http://localhost:8080/api/transit/nearby?lat=25.0478&lng=121.5170&city=臺北市&radius=800'
 ```
+
+`/api/transit/nearby` 沒有設定 TDX 憑證，或 TDX 本身故障時，回傳 503
+`{"available": false}` 而不是 500——這是可降級的附加功能，不影響避難所主查詢。
+公車站要靠 `city`（中文縣市名）才查得到：TDX 沒有全國性的公車「附近站點」端點，
+只能按縣市查；沒帶 `city` 就只回台鐵／高鐵站點，不算失敗。半徑會 clamp 到 TDX
+自己的 1000 公尺硬限制。目前不含捷運（Metro）——TDX 沒有跨系統的全國附近站點
+端點，留待之後有需要再做（見 [docs/nationwide-roadmap.md](docs/nationwide-roadmap.md) 的 Phase 4）。
 
 ## 設定
 
@@ -152,8 +164,14 @@ curl 'http://localhost:8080/api/regions?city=臺北市'
 | `LOG_LEVEL` | `info` | `debug`、`info`、`warn` 或 `error` |
 | `NFA_POINT_FILE_URL` | 消防署官方網址 | 覆寫點位檔來源 |
 | `UPSTREAM_BASE_URL` | `https://data.taipei/api/v1/dataset` | 僅離線工具 `build_coordinates.dart` 使用；可指向 proxy |
+| `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET` | （空） | TDX 憑證，選填。留空時 `/api/transit/*` 回 503，系統其餘部分不受影響 |
+| `TDX_TIMEOUT_SECONDS` | `5` | 對 TDX 的單次請求逾時秒數 |
 
-`.env` 不應提交到版本控制。目前系統**不需要任何金鑰**：唯一會用到憑證的 TDX 交通資訊仍在規劃階段（見 [docs/nationwide-roadmap.md](docs/nationwide-roadmap.md) 的 Phase 4），程式中尚無 TDX client。日後若啟用，`TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 只能留在伺服器環境中，絕不進入 Flutter bundle 或版本控制。
+`.env` 不應提交到版本控制。避難所主資料與底圖都**不需要任何金鑰**；唯一用到憑證
+的是選填的 TDX 交通資訊（[docs/nationwide-roadmap.md](docs/nationwide-roadmap.md)
+的 Phase 4），在 [https://tdx.transportdata.tw/](https://tdx.transportdata.tw/) 免費申請。
+`TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 只能留在伺服器環境中，絕不進入 Flutter
+bundle 或版本控制。
 
 ## 測試與 CI
 
@@ -161,12 +179,12 @@ curl 'http://localhost:8080/api/regions?city=臺北市'
 # 後端
 cd server
 dart analyze                      # 應為 0 issues
-dart test                         # 應為 175 passed
+dart test                         # 應為 190 passed
 
 # 前端
 cd flutter_codefest
 flutter analyze                   # 應為 0 issues
-flutter test                      # 應為 68 passed
+flutter test                      # 應為 74 passed
 ```
 
 GitHub Actions 會執行後端與 Flutter 的靜態分析、格式檢查、測試、Web 建置、Docker Compose 建置、Playwright 端對端測試，以及 Git 歷史的機密掃描。完整設定見 [ci.yml](.github/workflows/ci.yml)。
