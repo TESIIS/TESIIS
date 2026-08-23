@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:server/data/datasources/external/nfa_shelter_api.dart';
@@ -94,8 +96,13 @@ class _Upstream {
   int requests = 0;
   bool fail = false;
 
+  /// Never answers, rather than answering an error — the case a bare
+  /// `await client.get(...)` cannot survive.
+  bool hang = false;
+
   http.Client get client => MockClient((request) async {
     requests++;
+    if (hang) return Completer<http.Response>().future;
     if (fail || csvBody == null) return http.Response('upstream down', 503);
     // Without an explicit charset, package:http encodes `body` -> `bodyBytes`
     // as latin-1, which mangles every Chinese field and makes
@@ -113,9 +120,10 @@ void main() {
   ShelterRepositoryImpl repositoryFor(
     _Upstream upstream, {
     Duration ttl = const Duration(minutes: 10),
+    Duration upstreamTimeout = const Duration(milliseconds: 50),
     ShelterSnapshotSource? snapshot,
   }) => ShelterRepositoryImpl(
-    api: NfaShelterApi(client: upstream.client),
+    api: NfaShelterApi(client: upstream.client, timeout: upstreamTimeout),
     snapshot: snapshot ?? ShelterSnapshotSource.empty(),
     cacheTtl: ttl,
   );
@@ -315,5 +323,56 @@ void main() {
   test('coordinateCoverage falls back to the snapshot before any fetch', () {
     final repository = repositoryFor(_Upstream(null), snapshot: _snapshot);
     expect(repository.coordinateCoverage.total, 2);
+  });
+
+  group('an upstream that hangs rather than fails', () {
+    // Before the timeout existed this whole group hung forever instead of
+    // failing: with no bound on the fetch, `_inFlight` parked every later
+    // caller on the same unresolved future, the catch clause never ran, and
+    // the stale/snapshot fallback it guards was unreachable.
+    test('falls back to the snapshot instead of hanging', () async {
+      final upstream = _Upstream(_nfaCsv([_nfaRow()]))..hang = true;
+      final repository = repositoryFor(upstream, snapshot: _snapshot);
+
+      final shelters = await repository.getAllShelters().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw StateError('getAllShelters never returned'),
+      );
+
+      expect(shelters, hasLength(2), reason: 'the committed snapshot');
+      expect(repository.dataFreshness, ShelterDataFreshness.snapshot);
+    });
+
+    test('serves the stale cache once one exists', () async {
+      final upstream = _Upstream(_nfaCsv([_nfaRow()]));
+      final repository = repositoryFor(upstream, ttl: Duration.zero);
+      expect(await repository.getAllShelters(), hasLength(1));
+
+      upstream.hang = true;
+      final shelters = await repository.getAllShelters().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw StateError('getAllShelters never returned'),
+      );
+
+      expect(shelters, hasLength(1));
+      expect(repository.dataFreshness, ShelterDataFreshness.cached);
+    });
+
+    test('the backoff engages, so a hang is not retried per request', () async {
+      final upstream = _Upstream(_nfaCsv([_nfaRow()]));
+      final repository = repositoryFor(upstream, ttl: Duration.zero);
+      await repository.getAllShelters();
+
+      upstream.hang = true;
+      await repository.getAllShelters();
+      final afterFirstHang = upstream.requests;
+      await repository.getAllShelters();
+
+      expect(
+        upstream.requests,
+        afterFirstHang,
+        reason: 'the second call must be served from cache, not re-attempted',
+      );
+    });
   });
 }
