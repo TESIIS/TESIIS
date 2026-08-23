@@ -18,7 +18,7 @@ class GeoBox {
 ///
 /// A single national box is useless as a quality gate: it would happily
 /// accept a 苗栗縣 shelter mis-geocoded to Taipei. Validated against a live
-/// pull of all 5,973 records (2026-08-23): 98.0% pass (5,853/5,973). The 117
+/// pull of all 5,973 records (2026-08-23): 98.0% pass (5,854/5,973). The 119
 /// rejects fall into three clusters worth knowing about, so a *new* one shows
 /// up as a real anomaly rather than getting lost in expected noise:
 ///   - ~36 rows nationwide share one exact point (121.533012/25.042385) — a

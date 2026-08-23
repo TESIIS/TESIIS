@@ -367,11 +367,17 @@ class ShelterController {
       // it silently truncated the response to under a fifth of the dataset
       // with no error and no signal — the client had no way to know it
       // didn't have everything. `truncated` makes that visible either way.
-      final limit = int.tryParse(params['limit'] ?? '') ?? Env.maxSnapshotItems;
+      final requestedLimit =
+          int.tryParse(params['limit'] ?? '') ?? Env.maxSnapshotItems;
       final offset = int.tryParse(params['offset'] ?? '') ?? 0;
-      if (limit < 0 || offset < 0) {
+      if (requestedLimit < 0 || offset < 0) {
         return _badRequest('limit and offset must not be negative');
       }
+      // Capped rather than rejected, so an over-large limit still returns
+      // usable data with `truncated` telling the caller to page. The cap
+      // matters because one unauthenticated request could otherwise ask for
+      // the whole dataset — 4.16 MB uncompressed — in a loop.
+      final limit = requestedLimit.clamp(0, Env.maxSnapshotItems);
 
       final filtered = _applyFilters(await service.fetchAllShelters(), query);
       final paged = filtered.skip(offset).take(limit);

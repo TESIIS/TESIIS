@@ -65,12 +65,11 @@ async function searchShelters(page: Page, query: string) {
 /// abbreviates the same facility to "螢橋國中". Querying live sidesteps
 /// that entirely.
 ///
-/// Picks a shelter with a coordinate on record — nationwide, about 8% of
-/// the dataset has none (see `Shelter.hasCoordinate`'s doc comment in the
-/// Flutter app), and `limit=1` alone can easily land on one of those. A
-/// caller that needs to navigate to the result (the nav-button test) would
-/// then never see the button, since it only renders when the shelter has
-/// coordinates.
+/// Picks a shelter with a coordinate on record. Every row in the nationwide
+/// dataset has one today — the NFA point file ships its own WGS84 columns and
+/// rows failing the county bounds check are dropped — so this is a guard
+/// against that changing, not a workaround for a known gap. The nav-button
+/// test needs it: the button only renders for a shelter with coordinates.
 async function fetchSampleShelter(
   request: import('@playwright/test').APIRequestContext,
   baseURL: string,

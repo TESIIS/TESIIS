@@ -3,11 +3,18 @@ import 'package:flutter_codefest/data/models/shelter.dart';
 
 /// Tells the user how much to trust the position shown for [shelter].
 ///
-/// The upstream dataset carries no coordinates at all — every point is
-/// joined in from other government datasets. About 8% of shelters cannot be
-/// located and roughly a fifth of the rest sit at an interpolated street
-/// position. Stating that is more honest than a map that looks uniformly
-/// precise, and it is exactly the sort of thing someone needs to know before
+/// Every shelter in the nationwide dataset currently reports an exact
+/// position: the NFA point file carries its own WGS84 columns, and a row
+/// whose point falls outside its county's bounds is rejected rather than
+/// shown. So in practice this widget stays quiet — it is a guard against the
+/// data changing, not a caption on a known gap.
+///
+/// The approximate and missing cases are kept because they were real under
+/// the retired Taipei pipeline, where every point came from joining 門牌地址
+/// against a separate dataset: about 8% never matched, and the matches that
+/// did were interpolated street positions off by 40–761 m. If a future source
+/// reintroduces either, saying so is more honest than a map that looks
+/// uniformly precise — which is exactly what someone needs to know before
 /// walking somewhere during an emergency.
 class CoordinateNotice extends StatelessWidget {
   const CoordinateNotice({super.key, required this.shelter});

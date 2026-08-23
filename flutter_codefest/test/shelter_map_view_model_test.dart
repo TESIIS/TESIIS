@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_codefest/data/datasources/request_cache.dart';
+import 'package:flutter_codefest/data/models/cluster_page.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/data/models/shelter_page.dart';
 import 'package:flutter_codefest/domain/marker_clustering.dart';
@@ -23,7 +24,7 @@ ShelterCluster _singleCluster(Shelter shelter) => ShelterCluster(
 );
 
 ShelterMapViewModel _viewModel({
-  Future<List<ShelterCluster>> Function(Map<String, String>)? clusters,
+  Future<ClusterPage> Function(Map<String, String>)? clusters,
   Future<ShelterPage> Function(Map<String, String>)? page,
   Future<List<Shelter>> Function({
     required double lat,
@@ -38,7 +39,7 @@ ShelterMapViewModel _viewModel({
   Future<void> Function(String key, Map<String, dynamic> body)? cachePut,
   Future<Position?> Function()? getLastKnownPosition,
 }) => ShelterMapViewModel(
-  fetchClusters: clusters ?? (params) async => const [],
+  fetchClusters: clusters ?? (params) async => const ClusterPage(clusters: []),
   fetchShelterPage:
       page ??
       (params) async =>
@@ -63,7 +64,10 @@ void main() {
   group('loadClusters', () {
     test('stores the clusters the server returned', () async {
       final near = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
-      final vm = _viewModel(clusters: (params) async => [_singleCluster(near)]);
+      final vm = _viewModel(
+        clusters: (params) async =>
+            ClusterPage(clusters: [_singleCluster(near)]),
+      );
 
       await vm.loadClusters(_bounds, 13);
 
@@ -75,7 +79,7 @@ void main() {
       final vm = _viewModel(
         clusters: (params) async {
           seen = params;
-          return const [];
+          return const ClusterPage(clusters: []);
         },
       );
       await vm.loadClusters(_bounds, 13);
@@ -96,7 +100,7 @@ void main() {
       final vm = _viewModel(
         clusters: (params) async {
           seen = params;
-          return const [];
+          return const ClusterPage(clusters: []);
         },
       );
 
@@ -114,11 +118,11 @@ void main() {
       () async {
         final first = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
         final second = fakeShelter(id: 2, lat: 25.1, lng: 121.6);
-        final firstCompleter = Completer<List<ShelterCluster>>();
+        final firstCompleter = Completer<ClusterPage>();
         final vm = _viewModel(
           clusters: (params) => params['bbox']!.startsWith('120.0')
               ? firstCompleter.future
-              : Future.value([_singleCluster(second)]),
+              : Future.value(ClusterPage(clusters: [_singleCluster(second)])),
         );
 
         // The first request hangs; the second completes immediately.
@@ -127,7 +131,7 @@ void main() {
           13,
         );
         await vm.loadClusters(_bounds, 13);
-        firstCompleter.complete([_singleCluster(first)]);
+        firstCompleter.complete(ClusterPage(clusters: [_singleCluster(first)]));
         await firstFetch;
 
         expect(vm.clusters.single.single, second);
@@ -182,7 +186,7 @@ void main() {
       var useFresh = false;
       final vm = _viewModel(
         clusters: (params) async {
-          if (useFresh) return [_singleCluster(fresh)];
+          if (useFresh) return ClusterPage(clusters: [_singleCluster(fresh)]);
           throw Exception('network down');
         },
         cacheGet: (key) async => CachedResponse(
@@ -357,7 +361,7 @@ void main() {
       nearby,
     }) async {
       final vm = ShelterMapViewModel(
-        fetchClusters: (params) async => const [],
+        fetchClusters: (params) async => const ClusterPage(clusters: []),
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
         fetchNearby: nearby,
@@ -454,7 +458,7 @@ void main() {
       final vm = _viewModel(
         clusters: (params) async {
           calls++;
-          return const [];
+          return const ClusterPage(clusters: []);
         },
       );
       await vm.loadClusters(_bounds, 13);
@@ -473,7 +477,7 @@ void main() {
       final vm = _viewModel(
         clusters: (params) async {
           clusterCalls++;
-          return const [];
+          return const ClusterPage(clusters: []);
         },
       );
       await vm.loadClusters(_bounds, 13);
@@ -501,7 +505,7 @@ void main() {
       final near = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
       Map<String, double>? nearbyCall;
       final vm = ShelterMapViewModel(
-        fetchClusters: (params) async => const [],
+        fetchClusters: (params) async => const ClusterPage(clusters: []),
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
         fetchNearby:
@@ -541,7 +545,7 @@ void main() {
     test('falls back to getCurrentPosition when getLastKnownPosition throws '
         '(Flutter Web has no last-known-position concept)', () async {
       final vm = ShelterMapViewModel(
-        fetchClusters: (params) async => const [],
+        fetchClusters: (params) async => const ClusterPage(clusters: []),
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
         fetchNearby:
@@ -572,7 +576,7 @@ void main() {
     test('refreshes nearby shelters with the current zoom radius', () async {
       final radii = <double>[];
       final vm = ShelterMapViewModel(
-        fetchClusters: (params) async => const [],
+        fetchClusters: (params) async => const ClusterPage(clusters: []),
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
         fetchNearby:
@@ -623,6 +627,47 @@ void main() {
 
       expect(vm.selectedShelter, isNull);
       expect(vm.showShelterDetails, isFalse);
+    });
+  });
+
+  group('dataFreshness', () {
+    // The server reports this on every list response and nothing ever read
+    // it, so the map could be drawn entirely from the committed offline
+    // snapshot with no way for the user to tell.
+    test('is taken from the clusters response', () async {
+      final vm = _viewModel(
+        clusters: (params) async =>
+            const ClusterPage(clusters: [], dataFreshness: 'snapshot'),
+      );
+      await vm.loadClusters(_bounds, 13);
+
+      expect(vm.dataFreshness, 'snapshot');
+      expect(vm.isServingStaleData, isTrue);
+    });
+
+    test('live data is not flagged as stale', () async {
+      final vm = _viewModel(
+        clusters: (params) async =>
+            const ClusterPage(clusters: [], dataFreshness: 'live'),
+      );
+      await vm.loadClusters(_bounds, 13);
+
+      expect(vm.isServingStaleData, isFalse);
+    });
+
+    test('a server that reports nothing is not assumed stale', () async {
+      final vm = _viewModel(
+        clusters: (params) async => const ClusterPage(clusters: []),
+      );
+      await vm.loadClusters(_bounds, 13);
+
+      expect(vm.isServingStaleData, isFalse);
+    });
+
+    test('survives the cache round-trip', () async {
+      const page = ClusterPage(clusters: [], dataFreshness: 'cached');
+      final restored = ClusterPage.fromJson(page.toJson());
+      expect(restored.dataFreshness, 'cached');
     });
   });
 }

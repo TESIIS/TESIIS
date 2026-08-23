@@ -13,6 +13,30 @@ import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
 import 'package:server/domain/repositories/shelter_repository.dart';
 import 'package:server/presentation/controllers/shelter_controller.dart';
 
+/// Request logging that records the path but never the query string.
+///
+/// `shelf`'s own `logRequests()` logs `request.requestedUri`, which for
+/// `/api/shelters/nearby?lat=25.03&lng=121.56` writes the caller's exact
+/// position into stdout — and from there into every container log sink, for
+/// however long that sink retains it. The app tells users their GPS position
+/// stays on the device; this is what makes that true of the server too.
+///
+/// Method, path, status and duration are all the operational signal the query
+/// string was carrying anyway. A 4xx that needs its parameters to diagnose
+/// still returns the reason in its own response body.
+Middleware _logRequestPaths(Logger logger) => (innerHandler) {
+  return (request) async {
+    final watch = Stopwatch()..start();
+    final response = await innerHandler(request);
+    watch.stop();
+    logger.info(
+      '${request.method} ${request.requestedUri.path} '
+      '${response.statusCode} ${watch.elapsedMilliseconds}ms',
+    );
+    return response;
+  };
+};
+
 /// Maps the LOG_LEVEL config value onto a `package:logging` level.
 Level _logLevelFrom(String name) {
   switch (name) {
@@ -84,8 +108,8 @@ Future<void> main(List<String> args) async {
     return Response.notFound('Route not found: ${req.url.path}');
   });
 
-  final handler = const Pipeline()
-      .addMiddleware(logRequests())
+  final handler = Pipeline()
+      .addMiddleware(_logRequestPaths(Logger('Request')))
       .addMiddleware(corsHeaders())
       .addHandler(router.call);
 
