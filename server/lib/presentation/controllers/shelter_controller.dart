@@ -461,6 +461,7 @@ class ShelterController {
         bbox: query.bbox,
         includeItems: include.contains('items'),
         includeShelters: include.contains('shelters'),
+        includeVillages: include.contains('villages'),
       );
 
       return _ok({

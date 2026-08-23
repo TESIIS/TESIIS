@@ -10,6 +10,19 @@ import '../entities/shelter_cluster.dart';
 import '../entities/shelter_fields.dart';
 import '../repositories/shelter_repository.dart';
 
+/// Longitude -> Web Mercator world X, 0..1 across the whole world.
+double mercatorX(double lng) => (lng + 180) / 360;
+
+/// Latitude -> Web Mercator world Y, 0..1 top to bottom.
+///
+/// Clamped to the projection's own latitude limit, past which the transform
+/// diverges — Taiwan is nowhere near it, but a corrupt coordinate would
+/// otherwise produce an infinite bucket index.
+double mercatorY(double lat) {
+  final latRad = lat.clamp(-85.05112878, 85.05112878) * math.pi / 180;
+  return (1 - math.log(math.tan(latRad) + 1 / math.cos(latRad)) / math.pi) / 2;
+}
+
 class ShelterService {
   ShelterService({required this.repository});
 
@@ -263,20 +276,17 @@ class ShelterService {
     ];
     if (located.isEmpty) return const [];
 
-    // Longitude degrees per pixel at this zoom (Web Mercator, tile size 256).
-    final lngPerPixel = 360 / (256 * math.pow(2, zoom));
-    final cellLng = lngPerPixel * cellPixels;
+    // Cell size in Web Mercator world units (0..1 on both axes), where one
+    // unit is the same number of pixels horizontally and vertically at a
+    // given zoom. Bucketing here is what makes a cell actually square on
+    // screen; bucketing in degrees cannot, because a degree of latitude and
+    // a degree of longitude are different distances on screen.
+    final cell = cellPixels / (256 * math.pow(2, zoom));
 
     final buckets = <(int, int), List<Shelter>>{};
     for (final shelter in located) {
-      // Latitude degrees per pixel scales with cos(latitude) under Web
-      // Mercator — one `cos` call per shelter keeps it correct at Taiwan's
-      // 22–26°N without hardcoding an approximation.
-      final latRad = shelter.y! * math.pi / 180;
-      final cellLat =
-          (lngPerPixel * cellPixels) / math.cos(latRad).abs().clamp(0.01, 1.0);
-      final cellX = (shelter.x! / cellLng).floor();
-      final cellY = (shelter.y! / cellLat).floor();
+      final cellX = (mercatorX(shelter.x!) / cell).floor();
+      final cellY = (mercatorY(shelter.y!) / cell).floor();
       buckets.putIfAbsent((cellX, cellY), () => <Shelter>[]).add(shelter);
     }
 
@@ -362,6 +372,14 @@ class ShelterService {
     // data-quality page does not; it only reads coordinateQuality).
     bool includeItems = false,
     bool includeShelters = false,
+    // Same reasoning as the two above, one level deeper — and measurably the
+    // level that mattered. An unfiltered nationwide response is 1,609,270
+    // bytes, of which 1,534,027 (95.3%) is the per-village breakdown across
+    // 8,787 village entries. The only consumer, the app's data-quality page,
+    // reads township-level coordinateQuality and never descends into
+    // `villages`, so that 1.5 MB was transferred and parsed to be discarded.
+    // ?include=villages opts back in.
+    bool includeVillages = false,
   }) {
     // Reuse the exact predicate /shelters uses, so the two endpoints cannot
     // drift apart in what they consider a match.
@@ -443,7 +461,7 @@ class ShelterService {
           'township': t.key,
           'total': t.value.length,
           'coordinateQuality': _coordinateQuality(t.value),
-          'villages': villagesOf(t.value),
+          if (includeVillages) 'villages': villagesOf(t.value),
           if (includeShelters)
             'shelters': [for (final s in t.value) _shelterSummary(s)],
         });
