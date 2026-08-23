@@ -74,10 +74,10 @@ class TransitController {
         return _badRequest('lat and lng are required and must be numbers');
       }
 
-      final radius = (double.tryParse(params['radius'] ?? '') ??
-              _defaultRadiusMeters)
-          .clamp(1, _maxRadiusMeters)
-          .toDouble();
+      final radius =
+          (double.tryParse(params['radius'] ?? '') ?? _defaultRadiusMeters)
+              .clamp(1, _maxRadiusMeters)
+              .toDouble();
       final limit = (int.tryParse(params['limit'] ?? '') ?? _defaultLimit)
           .clamp(1, _maxLimit);
 

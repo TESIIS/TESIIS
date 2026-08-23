@@ -27,7 +27,10 @@ class _StubTransitService extends TransitService {
   }
 }
 
-Future<Map<String, dynamic>> get(TransitController controller, String path) async {
+Future<Map<String, dynamic>> get(
+  TransitController controller,
+  String path,
+) async {
   final response = await controller.router.call(
     Request('GET', Uri.parse('http://localhost$path')),
   );

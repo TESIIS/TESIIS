@@ -5,29 +5,28 @@ import 'package:flutter_codefest/presentation/widgets/shelter/nearby_transit_sec
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets(
-    'renders nothing when TDX is unavailable',
-    (WidgetTester tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: NearbyTransitSection(
-              lat: 25.05,
-              lng: 121.5,
-              city: '臺北市',
-              fetcher: ({required lat, required lng, city}) async =>
-                  const TransitNearbyResult(available: false),
-            ),
+  testWidgets('renders nothing when TDX is unavailable', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NearbyTransitSection(
+            lat: 25.05,
+            lng: 121.5,
+            city: '臺北市',
+            fetcher: ({required lat, required lng, city}) async =>
+                const TransitNearbyResult(available: false),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('附近交通'), findsNothing);
-      expect(find.byType(NearbyTransitSection), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(find.text('附近交通'), findsNothing);
+    expect(find.byType(NearbyTransitSection), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('renders nothing when there are no nearby stops', (
     WidgetTester tester,

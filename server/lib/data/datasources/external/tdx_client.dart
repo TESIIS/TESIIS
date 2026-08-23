@@ -62,9 +62,7 @@ class TdxClient {
     final resp = await _client
         .post(
           Uri.parse(Env.tdxAuthUrl),
-          headers: const {
-            'content-type': 'application/x-www-form-urlencoded',
-          },
+          headers: const {'content-type': 'application/x-www-form-urlencoded'},
           body: {
             'grant_type': 'client_credentials',
             'client_id': clientId,
@@ -79,7 +77,8 @@ class TdxClient {
       );
     }
 
-    final body = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    final body =
+        jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     final token = body['access_token'] as String?;
     final expiresIn = body['expires_in'] as int?;
     if (token == null || expiresIn == null) {

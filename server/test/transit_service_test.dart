@@ -3,13 +3,21 @@ import 'package:server/domain/entities/transit_stop.dart';
 import 'package:server/domain/services/transit_service.dart';
 import 'package:test/test.dart';
 
-Map<String, dynamic> _stopRow(String uid, {double lat = 25.05, double lng = 121.5}) => {
+Map<String, dynamic> _stopRow(
+  String uid, {
+  double lat = 25.05,
+  double lng = 121.5,
+}) => {
   'StopUID': uid,
   'StopName': {'Zh_tw': '測試站牌 $uid'},
   'StopPosition': {'PositionLon': lng, 'PositionLat': lat},
 };
 
-Map<String, dynamic> _stationRow(String uid, {double lat = 25.05, double lng = 121.5}) => {
+Map<String, dynamic> _stationRow(
+  String uid, {
+  double lat = 25.05,
+  double lng = 121.5,
+}) => {
   'StationUID': uid,
   'StationName': {'Zh_tw': '測試車站 $uid'},
   'StationPosition': {'PositionLon': lng, 'PositionLat': lat},
@@ -81,22 +89,25 @@ void main() {
       expect(result.stops.single.mode, TransitMode.tra);
     });
 
-    test('with an unrecognized city, also skips bus without marking partial', () async {
-      final service = TransitService(
-        client: _FakeTdxClient(traResult: const [], thsrResult: const []),
-      );
+    test(
+      'with an unrecognized city, also skips bus without marking partial',
+      () async {
+        final service = TransitService(
+          client: _FakeTdxClient(traResult: const [], thsrResult: const []),
+        );
 
-      final result = await service.nearby(
-        lat: 25.05,
-        lng: 121.5,
-        city: 'Not A Real City',
-        radiusMeters: 500,
-        limit: 10,
-      );
+        final result = await service.nearby(
+          lat: 25.05,
+          lng: 121.5,
+          city: 'Not A Real City',
+          radiusMeters: 500,
+          limit: 10,
+        );
 
-      expect(result.partial, isFalse);
-      expect(result.stops, isEmpty);
-    });
+        expect(result.partial, isFalse);
+        expect(result.stops, isEmpty);
+      },
+    );
 
     test('merges bus, TRA and THSR results sorted by distance', () async {
       final service = TransitService(
@@ -119,40 +130,46 @@ void main() {
       expect(result.stops.map((s) => s.id), ['TRA-1', 'BUS-1', 'THSR-1']);
     });
 
-    test('one failing source is reported as partial but others still return', () async {
-      final service = TransitService(
-        client: _FakeTdxClient(
-          busResult: [_stopRow('BUS-1')],
-          traResult: [_stationRow('TRA-1')],
-          thsrResult: Exception('THSR down'),
-        ),
-      );
+    test(
+      'one failing source is reported as partial but others still return',
+      () async {
+        final service = TransitService(
+          client: _FakeTdxClient(
+            busResult: [_stopRow('BUS-1')],
+            traResult: [_stationRow('TRA-1')],
+            thsrResult: Exception('THSR down'),
+          ),
+        );
 
-      final result = await service.nearby(
-        lat: 25.05,
-        lng: 121.5,
-        city: '臺北市',
-        radiusMeters: 500,
-        limit: 10,
-      );
+        final result = await service.nearby(
+          lat: 25.05,
+          lng: 121.5,
+          city: '臺北市',
+          radiusMeters: 500,
+          limit: 10,
+        );
 
-      expect(result.partial, isTrue);
-      expect(result.stops.map((s) => s.id), containsAll(['BUS-1', 'TRA-1']));
-    });
+        expect(result.partial, isTrue);
+        expect(result.stops.map((s) => s.id), containsAll(['BUS-1', 'TRA-1']));
+      },
+    );
 
-    test('all sources failing throws instead of returning an empty result', () async {
-      final service = TransitService(
-        client: _FakeTdxClient(
-          traResult: Exception('down'),
-          thsrResult: Exception('down'),
-        ),
-      );
+    test(
+      'all sources failing throws instead of returning an empty result',
+      () async {
+        final service = TransitService(
+          client: _FakeTdxClient(
+            traResult: Exception('down'),
+            thsrResult: Exception('down'),
+          ),
+        );
 
-      await expectLater(
-        service.nearby(lat: 25.05, lng: 121.5, radiusMeters: 500, limit: 10),
-        throwsException,
-      );
-    });
+        await expectLater(
+          service.nearby(lat: 25.05, lng: 121.5, radiusMeters: 500, limit: 10),
+          throwsException,
+        );
+      },
+    );
 
     test('limit truncates the merged, sorted result', () async {
       final service = TransitService(

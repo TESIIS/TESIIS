@@ -82,35 +82,32 @@ void main() {
     expect(capturedQuery, contains('25.0%2C121.0%2C1000%29'));
   });
 
-  test(
-    'a failed request backs off instead of retrying immediately',
-    () async {
-      var dataCalls = 0;
-      final client = TdxClient(
-        client: MockClient((request) async {
-          if (request.url.path.contains('openid-connect/token')) {
-            return http.Response(_tokenBody(), 200);
-          }
-          dataCalls++;
-          return http.Response('{"Message":"boom"}', 500);
-        }),
-      );
+  test('a failed request backs off instead of retrying immediately', () async {
+    var dataCalls = 0;
+    final client = TdxClient(
+      client: MockClient((request) async {
+        if (request.url.path.contains('openid-connect/token')) {
+          return http.Response(_tokenBody(), 200);
+        }
+        dataCalls++;
+        return http.Response('{"Message":"boom"}', 500);
+      }),
+    );
 
-      await expectLater(
-        client.nearbyTraStations(lat: 25, lng: 121, radiusMeters: 500),
-        throwsA(isA<ServiceUnavailableException>()),
-      );
-      expect(dataCalls, 1);
+    await expectLater(
+      client.nearbyTraStations(lat: 25, lng: 121, radiusMeters: 500),
+      throwsA(isA<ServiceUnavailableException>()),
+    );
+    expect(dataCalls, 1);
 
-      // Immediately retrying should fail fast off the backoff window rather
-      // than hitting the network again.
-      await expectLater(
-        client.nearbyTraStations(lat: 25, lng: 121, radiusMeters: 500),
-        throwsA(isA<ServiceUnavailableException>()),
-      );
-      expect(dataCalls, 1);
-    },
-  );
+    // Immediately retrying should fail fast off the backoff window rather
+    // than hitting the network again.
+    await expectLater(
+      client.nearbyTraStations(lat: 25, lng: 121, radiusMeters: 500),
+      throwsA(isA<ServiceUnavailableException>()),
+    );
+    expect(dataCalls, 1);
+  });
 
   test('missing credentials fails without any network call', () async {
     Env.loadFromLines(const []);

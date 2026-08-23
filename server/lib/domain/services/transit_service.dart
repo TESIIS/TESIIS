@@ -91,8 +91,10 @@ class TransitService {
       throw ServiceUnavailableException('All TDX sources failed');
     }
 
-    final stops = [for (final r in results) if (r != null) ...r]
-      ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+    final stops = [
+      for (final r in results)
+        if (r != null) ...r,
+    ]..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
     return TransitResult(
       stops: stops.take(limit).toList(),
