@@ -1,0 +1,92 @@
+name: Production monitor
+
+# Lightweight uptime/health check for the deployed site. No external
+# monitoring stack exists for this project (no Prometheus/Grafana, no
+# Slack/webhook integration) — this is deliberately the low-effort version:
+# a scheduled job that hits the real /healthz and fails loudly (GitHub emails
+# the workflow's watchers/last editor on a failed scheduled run) when
+# something is actually wrong. If that notification channel ever turns out
+# to be insufficient, add a real alerting step here — don't build one
+# speculatively.
+#
+# Checks status, county coverage, and coordinate-quality regression (all
+# already exposed by GET /healthz — see server/bin/server.dart) plus request
+# latency. Freshness fields are logged, not enforced: there's no
+# cross-run history here to judge "how long has it been stale", so a
+# threshold on that would just be a coin flip between silence and noise.
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub's scheduler can lag during high load — this is
+    # a "notice within roughly half an hour" budget, not a hard SLA.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthz:
+    name: check production /healthz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query /healthz and evaluate
+        env:
+          PROD_URL: ${{ vars.PROD_URL || 'https://tcf.itousouta.me' }}
+        run: |
+          set -euo pipefail
+
+          body=$(mktemp)
+          http_code=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+            --max-time 10 "$PROD_URL/healthz") || {
+            echo "::error::Could not reach $PROD_URL/healthz at all"
+            exit 1
+          }
+          latency=$(curl --silent --output /dev/null --write-out '%{time_total}' \
+            --max-time 10 "$PROD_URL/healthz")
+
+          echo "HTTP $http_code, ${latency}s"
+          cat "$body"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::/healthz returned HTTP $http_code"
+            exit 1
+          fi
+
+          status=$(jq -r '.status' "$body")
+          if [ "$status" != "ok" ]; then
+            echo "::error::status is \"$status\", expected \"ok\""
+            exit 1
+          fi
+
+          county_count=$(jq -r '.countsByCity | length' "$body")
+          if [ "$county_count" != "22" ]; then
+            echo "::error::countsByCity has $county_count counties, expected 22"
+            exit 1
+          fi
+
+          empty_counties=$(jq -r '.countsByCity | to_entries | map(select(.value <= 0)) | map(.key) | join(", ")' "$body")
+          if [ -n "$empty_counties" ]; then
+            echo "::error::these counties have zero shelters: $empty_counties"
+            exit 1
+          fi
+
+          # ~98% at last count (see README) — 90% leaves headroom against a
+          # transient blip while still catching a real regression.
+          coverage_ratio=$(jq -r '.coordinateCoverage.ratio' "$body")
+          below_floor=$(awk -v r="$coverage_ratio" 'BEGIN { print (r < 0.90) ? "1" : "0" }')
+          if [ "$below_floor" = "1" ]; then
+            echo "::error::coordinate coverage ratio is $coverage_ratio, expected >= 0.90"
+            exit 1
+          fi
+
+          slow=$(awk -v t="$latency" 'BEGIN { print (t > 5) ? "1" : "0" }')
+          if [ "$slow" = "1" ]; then
+            echo "::error::/healthz took ${latency}s, expected <= 5s"
+            exit 1
+          fi
+
+          echo "::notice::dataFreshness=$(jq -r '.dataFreshness' "$body"), \
+          dataUpdatedAt=$(jq -r '.dataUpdatedAt' "$body"), \
+          snapshotUpdatedAt=$(jq -r '.snapshotUpdatedAt' "$body")"
+          echo "All checks passed."
