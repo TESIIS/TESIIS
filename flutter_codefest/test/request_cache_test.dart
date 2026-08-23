@@ -67,9 +67,17 @@ void main() {
     }
 
     // 15 puts with maxEntries 12: the 12 newest (k3..k14) survive.
-    expect(await RequestCache.get(keys.first), isNull, reason: 'oldest evicted');
+    expect(
+      await RequestCache.get(keys.first),
+      isNull,
+      reason: 'oldest evicted',
+    );
     expect(await RequestCache.get(keys[2]), isNull);
-    expect(await RequestCache.get(keys[3]), isNotNull, reason: '12th newest kept');
+    expect(
+      await RequestCache.get(keys[3]),
+      isNotNull,
+      reason: '12th newest kept',
+    );
     expect(await RequestCache.get(keys.last), isNotNull, reason: 'newest kept');
   });
 

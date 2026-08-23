@@ -30,16 +30,16 @@ ShelterMapViewModel _viewModel({
     required double lng,
     double? radiusMeters,
     int limit,
-  })? nearby,
+  })?
+  nearby,
   Future<CachedResponse?> Function(String key)? cacheGet,
   Future<void> Function(String key, Map<String, dynamic> body)? cachePut,
 }) => ShelterMapViewModel(
   fetchClusters: clusters ?? (params) async => const [],
-  fetchShelterPage: page ?? (params) async => const ShelterPage(
-    shelters: [],
-    total: 0,
-    truncated: false,
-  ),
+  fetchShelterPage:
+      page ??
+      (params) async =>
+          const ShelterPage(shelters: [], total: 0, truncated: false),
   fetchNearby:
       nearby ??
       ({required lat, required lng, radiusMeters, limit = 10}) async =>
@@ -62,10 +62,12 @@ void main() {
 
     test('sends bbox, zoom and filter groups as query params', () async {
       Map<String, String>? seen;
-      final vm = _viewModel(clusters: (params) async {
-        seen = params;
-        return const [];
-      });
+      final vm = _viewModel(
+        clusters: (params) async {
+          seen = params;
+          return const [];
+        },
+      );
       await vm.loadClusters(_bounds, 13);
 
       vm.toggleFilter('flood');
@@ -81,38 +83,46 @@ void main() {
 
     test('omits bbox when the viewport exceeds the 6° cap', () async {
       Map<String, String>? seen;
-      final vm = _viewModel(clusters: (params) async {
-        seen = params;
-        return const [];
-      });
+      final vm = _viewModel(
+        clusters: (params) async {
+          seen = params;
+          return const [];
+        },
+      );
 
-      final huge = LatLngBounds(const LatLng(18.0, 118.0), const LatLng(27.0, 127.0));
+      final huge = LatLngBounds(
+        const LatLng(18.0, 118.0),
+        const LatLng(27.0, 127.0),
+      );
       await vm.loadClusters(huge, 6);
 
       expect(seen?.containsKey('bbox'), isFalse);
     });
 
-    test('ignores a stale response that arrives after a newer request', () async {
-      final first = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
-      final second = fakeShelter(id: 2, lat: 25.1, lng: 121.6);
-      final firstCompleter = Completer<List<ShelterCluster>>();
-      final vm = _viewModel(
-        clusters: (params) => params['bbox']!.startsWith('120.0')
-            ? firstCompleter.future
-            : Future.value([_singleCluster(second)]),
-      );
+    test(
+      'ignores a stale response that arrives after a newer request',
+      () async {
+        final first = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
+        final second = fakeShelter(id: 2, lat: 25.1, lng: 121.6);
+        final firstCompleter = Completer<List<ShelterCluster>>();
+        final vm = _viewModel(
+          clusters: (params) => params['bbox']!.startsWith('120.0')
+              ? firstCompleter.future
+              : Future.value([_singleCluster(second)]),
+        );
 
-      // The first request hangs; the second completes immediately.
-      final firstFetch = vm.loadClusters(
-        LatLngBounds(const LatLng(24.0, 120.0), const LatLng(25.0, 121.0)),
-        13,
-      );
-      await vm.loadClusters(_bounds, 13);
-      firstCompleter.complete([_singleCluster(first)]);
-      await firstFetch;
+        // The first request hangs; the second completes immediately.
+        final firstFetch = vm.loadClusters(
+          LatLngBounds(const LatLng(24.0, 120.0), const LatLng(25.0, 121.0)),
+          13,
+        );
+        await vm.loadClusters(_bounds, 13);
+        firstCompleter.complete([_singleCluster(first)]);
+        await firstFetch;
 
-      expect(vm.clusters.single.single, second);
-    });
+        expect(vm.clusters.single.single, second);
+      },
+    );
 
     test('falls back to the cached viewport when the fetch fails', () async {
       final cached = fakeShelter(id: 9, lat: 25.0, lng: 121.5);
@@ -122,7 +132,12 @@ void main() {
         cacheGet: (key) async => CachedResponse(
           body: {
             'clusters': [
-              {'count': 1, 'lat': 25.0, 'lng': 121.5, 'shelter': cached.toJson()},
+              {
+                'count': 1,
+                'lat': 25.0,
+                'lng': 121.5,
+                'shelter': cached.toJson(),
+              },
             ],
           },
           cachedAt: cachedAt,
@@ -137,17 +152,20 @@ void main() {
       expect(vm.locationMessage, isNull);
     });
 
-    test('clears markers and reports when neither fetch nor cache work', () async {
-      final vm = _viewModel(
-        clusters: (params) async => throw Exception('network down'),
-      );
+    test(
+      'clears markers and reports when neither fetch nor cache work',
+      () async {
+        final vm = _viewModel(
+          clusters: (params) async => throw Exception('network down'),
+        );
 
-      await vm.loadClusters(_bounds, 13);
+        await vm.loadClusters(_bounds, 13);
 
-      expect(vm.clusters, isEmpty);
-      expect(vm.isLocationSuccess, isFalse);
-      expect(vm.locationMessage, contains('無法連線到伺服器'));
-    });
+        expect(vm.clusters, isEmpty);
+        expect(vm.isLocationSuccess, isFalse);
+        expect(vm.locationMessage, contains('無法連線到伺服器'));
+      },
+    );
 
     test('a later successful fetch clears the cached-data flag', () async {
       final fresh = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
@@ -160,7 +178,12 @@ void main() {
         cacheGet: (key) async => CachedResponse(
           body: {
             'clusters': [
-              {'count': 1, 'lat': 25.0, 'lng': 121.5, 'shelter': fakeShelter(id: 9, lat: 25.0, lng: 121.5).toJson()},
+              {
+                'count': 1,
+                'lat': 25.0,
+                'lng': 121.5,
+                'shelter': fakeShelter(id: 9, lat: 25.0, lng: 121.5).toJson(),
+              },
             ],
           },
           cachedAt: DateTime.utc(2026, 1, 1),
@@ -181,10 +204,12 @@ void main() {
   group('search', () {
     test('an empty query clears results without calling the network', () async {
       var calls = 0;
-      final vm = _viewModel(page: (params) async {
-        calls++;
-        return const ShelterPage(shelters: [], total: 0, truncated: false);
-      });
+      final vm = _viewModel(
+        page: (params) async {
+          calls++;
+          return const ShelterPage(shelters: [], total: 0, truncated: false);
+        },
+      );
 
       await vm.search('');
 
@@ -210,10 +235,12 @@ void main() {
 
     test('sends the query and filter groups server-side', () async {
       Map<String, String>? seen;
-      final vm = _viewModel(page: (params) async {
-        seen = params;
-        return const ShelterPage(shelters: [], total: 0, truncated: false);
-      });
+      final vm = _viewModel(
+        page: (params) async {
+          seen = params;
+          return const ShelterPage(shelters: [], total: 0, truncated: false);
+        },
+      );
       vm.toggleSearching();
       vm.toggleFilter('landslide');
       vm.toggleFilter('outdoor');
@@ -229,15 +256,17 @@ void main() {
 
     test('loadMoreSearch appends the next page', () async {
       var calls = 0;
-      final vm = _viewModel(page: (params) async {
-        calls++;
-        final offset = int.parse(params['offset']!);
-        return ShelterPage(
-          shelters: [fakeShelter(id: offset + 1)],
-          total: 2,
-          truncated: offset == 0,
-        );
-      });
+      final vm = _viewModel(
+        page: (params) async {
+          calls++;
+          final offset = int.parse(params['offset']!);
+          return ShelterPage(
+            shelters: [fakeShelter(id: offset + 1)],
+            total: 2,
+            truncated: offset == 0,
+          );
+        },
+      );
 
       await vm.search('國小');
       expect(vm.searchResults, hasLength(1));
@@ -255,17 +284,23 @@ void main() {
       final vm = _viewModel(
         page: (params) => params['q'] == '舊'
             ? firstCompleter.future
-            : Future.value(ShelterPage(
-                shelters: [fakeShelter(id: 2, name: '新的')],
-                total: 1,
-                truncated: false,
-              )),
+            : Future.value(
+                ShelterPage(
+                  shelters: [fakeShelter(id: 2, name: '新的')],
+                  total: 1,
+                  truncated: false,
+                ),
+              ),
       );
 
       final first = vm.search('舊');
       await vm.search('新');
       firstCompleter.complete(
-        ShelterPage(shelters: [fakeShelter(id: 1, name: '舊的')], total: 1, truncated: false),
+        ShelterPage(
+          shelters: [fakeShelter(id: 1, name: '舊的')],
+          total: 1,
+          truncated: false,
+        ),
       );
       await first;
 
@@ -302,10 +337,12 @@ void main() {
   group('toggleFilter', () {
     test('re-issues the current search with the new groups', () async {
       Map<String, String>? seen;
-      final vm = _viewModel(page: (params) async {
-        seen = params;
-        return const ShelterPage(shelters: [], total: 0, truncated: false);
-      });
+      final vm = _viewModel(
+        page: (params) async {
+          seen = params;
+          return const ShelterPage(shelters: [], total: 0, truncated: false);
+        },
+      );
       vm.toggleSearching();
       await vm.search('公園');
 
@@ -318,10 +355,12 @@ void main() {
 
     test('refreshes clusters when not searching', () async {
       var calls = 0;
-      final vm = _viewModel(clusters: (params) async {
-        calls++;
-        return const [];
-      });
+      final vm = _viewModel(
+        clusters: (params) async {
+          calls++;
+          return const [];
+        },
+      );
       await vm.loadClusters(_bounds, 13);
       expect(calls, 1);
 
@@ -335,10 +374,12 @@ void main() {
   group('toggleSearching', () {
     test('closing search refreshes the viewport clusters', () async {
       var clusterCalls = 0;
-      final vm = _viewModel(clusters: (params) async {
-        clusterCalls++;
-        return const [];
-      });
+      final vm = _viewModel(
+        clusters: (params) async {
+          clusterCalls++;
+          return const [];
+        },
+      );
       await vm.loadClusters(_bounds, 13);
       expect(clusterCalls, 1);
 
@@ -367,10 +408,15 @@ void main() {
         fetchClusters: (params) async => const [],
         fetchShelterPage: (params) async =>
             const ShelterPage(shelters: [], total: 0, truncated: false),
-        fetchNearby: ({required lat, required lng, radiusMeters, limit = 10}) async {
-          nearbyCall = {'lat': lat, 'lng': lng, 'radius': radiusMeters ?? 0};
-          return [near];
-        },
+        fetchNearby:
+            ({required lat, required lng, radiusMeters, limit = 10}) async {
+              nearbyCall = {
+                'lat': lat,
+                'lng': lng,
+                'radius': radiusMeters ?? 0,
+              };
+              return [near];
+            },
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.always,
         requestPermission: () async => LocationPermission.always,

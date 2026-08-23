@@ -14,18 +14,17 @@ import 'package:flutter_map/flutter_map.dart' show LatLngBounds;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-typedef FetchClusters = Future<List<ShelterCluster>> Function(
-  Map<String, String> params,
-);
-typedef FetchShelterPage = Future<ShelterPage> Function(
-  Map<String, String> params,
-);
-typedef FetchNearbyShelters = Future<List<Shelter>> Function({
-  required double lat,
-  required double lng,
-  double? radiusMeters,
-  int limit,
-});
+typedef FetchClusters =
+    Future<List<ShelterCluster>> Function(Map<String, String> params);
+typedef FetchShelterPage =
+    Future<ShelterPage> Function(Map<String, String> params);
+typedef FetchNearbyShelters =
+    Future<List<Shelter>> Function({
+      required double lat,
+      required double lng,
+      double? radiusMeters,
+      int limit,
+    });
 typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
 typedef RequestPermission = Future<LocationPermission> Function();
@@ -178,9 +177,7 @@ class ShelterMapViewModel extends ChangeNotifier {
     final params = repo.clustersQueryParams(
       bbox: bbox,
       zoom: zoom,
-      disasters: _selectedDisasterTypes.isEmpty
-          ? null
-          : _selectedDisasterTypes,
+      disasters: _selectedDisasterTypes.isEmpty ? null : _selectedDisasterTypes,
       spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
     );
     final key = RequestCache.keyFor('/shelters/clusters', params);
@@ -191,15 +188,19 @@ class ShelterMapViewModel extends ChangeNotifier {
       _clusters = clusters;
       _isShowingCachedData = false;
       _cachedAt = null;
-      unawaited(_cachePut(key, {'clusters': [for (final c in clusters) c.toJson()]}));
+      unawaited(
+        _cachePut(key, {
+          'clusters': [for (final c in clusters) c.toJson()],
+        }),
+      );
       notifyListeners();
     } catch (_) {
       final cached = await _cacheGet(key);
       if (id != _clusterRequestId) return;
       if (cached != null) {
         _clusters = [
-          for (final c in cached.body['clusters'] as List<dynamic>? ??
-              const <dynamic>[])
+          for (final c
+              in cached.body['clusters'] as List<dynamic>? ?? const <dynamic>[])
             ShelterCluster.fromServerJson(c as Map<String, dynamic>),
         ];
         _isShowingCachedData = true;
@@ -344,9 +345,7 @@ class ShelterMapViewModel extends ChangeNotifier {
 
     final params = repo.sheltersPageQueryParams(
       q: _searchQuery,
-      disasters: _selectedDisasterTypes.isEmpty
-          ? null
-          : _selectedDisasterTypes,
+      disasters: _selectedDisasterTypes.isEmpty ? null : _selectedDisasterTypes,
       spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
       limit: searchPageSize,
       offset: offset,

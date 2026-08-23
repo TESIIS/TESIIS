@@ -28,7 +28,8 @@ class ShelterPage {
     final data = json['data'] as List<dynamic>? ?? const [];
     return ShelterPage(
       shelters: [
-        for (final entry in data) Shelter.fromJson(entry as Map<String, dynamic>),
+        for (final entry in data)
+          Shelter.fromJson(entry as Map<String, dynamic>),
       ],
       total: (json['total'] as num?)?.toInt() ?? data.length,
       truncated: json['truncated'] == true,

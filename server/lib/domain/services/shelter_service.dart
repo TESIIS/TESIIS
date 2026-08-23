@@ -255,7 +255,10 @@ class ShelterService {
     double cellPixels = 80,
     int minPointsToCluster = 2,
   }) {
-    final located = [for (final s in data) if (s.hasCoordinate) s];
+    final located = [
+      for (final s in data)
+        if (s.hasCoordinate) s,
+    ];
     if (located.isEmpty) return const [];
 
     // Longitude degrees per pixel at this zoom (Web Mercator, tile size 256).

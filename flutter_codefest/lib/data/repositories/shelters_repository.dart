@@ -31,10 +31,9 @@ Map<String, String> clustersQueryParams({
 /// centroids instead of ~5,850 records. Omit `bbox` for "the whole country" —
 /// the clusters endpoint deliberately has no 2° bbox cap.
 Future<List<ShelterCluster>> fetchClusters(Map<String, String> params) async {
-  final body = await ApiService.get(
-    '/shelters/clusters',
-    queryParams: params,
-  ) as Map<String, dynamic>;
+  final body =
+      await ApiService.get('/shelters/clusters', queryParams: params)
+          as Map<String, dynamic>;
   return [
     for (final cluster in body['clusters'] as List<dynamic>? ?? const [])
       ShelterCluster.fromServerJson(cluster as Map<String, dynamic>),
@@ -78,15 +77,17 @@ Future<List<Shelter>> fetchNearbyShelters({
   double? radiusMeters,
   int limit = 10,
 }) async {
-  final body = await ApiService.get(
-    '/shelters/nearby',
-    queryParams: {
-      'lat': '$lat',
-      'lng': '$lng',
-      if (radiusMeters != null) 'radius': '$radiusMeters',
-      'limit': '$limit',
-    },
-  ) as Map<String, dynamic>;
+  final body =
+      await ApiService.get(
+            '/shelters/nearby',
+            queryParams: {
+              'lat': '$lat',
+              'lng': '$lng',
+              if (radiusMeters != null) 'radius': '$radiusMeters',
+              'limit': '$limit',
+            },
+          )
+          as Map<String, dynamic>;
   return [
     for (final entry in body['data'] as List<dynamic>? ?? const [])
       Shelter.fromJson(entry as Map<String, dynamic>),

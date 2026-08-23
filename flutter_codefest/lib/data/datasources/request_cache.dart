@@ -45,7 +45,8 @@ class RequestCache {
   static String keyFor(String path, Map<String, String> queryParams) {
     final entries = queryParams.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    final raw = '$path?'
+    final raw =
+        '$path?'
         '${entries.map((e) => '${Uri.encodeQueryComponent(e.key)}='
             '${Uri.encodeQueryComponent(e.value)}').join('&')}';
 
@@ -105,8 +106,8 @@ class RequestCache {
 
       return CachedResponse(
         body: jsonDecode(entry['body'] as String) as Map<String, dynamic>,
-        cachedAt: DateTime.tryParse(entry['at'] as String? ?? '') ??
-            DateTime.now(),
+        cachedAt:
+            DateTime.tryParse(entry['at'] as String? ?? '') ?? DateTime.now(),
       );
     } catch (_) {
       return null;
@@ -118,8 +119,7 @@ class RequestCache {
       final prefs = await _prefs;
       final raw = prefs.getString(_storeKey);
       if (raw == null) return <Map<String, dynamic>>[];
-      return (jsonDecode(raw) as List<dynamic>)
-          .cast<Map<String, dynamic>>();
+      return (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
     } catch (_) {
       return <Map<String, dynamic>>[];
     }

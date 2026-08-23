@@ -36,9 +36,7 @@ class ShelterCluster {
         (json['lat'] as num).toDouble(),
         (json['lng'] as num).toDouble(),
       ),
-      members: shelterJson == null
-          ? const []
-          : [Shelter.fromJson(shelterJson)],
+      members: shelterJson == null ? const [] : [Shelter.fromJson(shelterJson)],
       count: (json['count'] as num).toInt(),
     );
   }

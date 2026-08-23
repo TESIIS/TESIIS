@@ -123,10 +123,7 @@ class _ShelterQuery {
       'landslide': '土石流',
       'tsunami': '海嘯',
     },
-    'spaces': {
-      'indoor': '室內',
-      'outdoor': '室外',
-    },
+    'spaces': {'indoor': '室內', 'outdoor': '室外'},
   };
 
   static (Set<String>?, String?) _parseGroup(String? raw, String param) {
@@ -170,7 +167,10 @@ class _ShelterQuery {
 
     final (bbox, bboxError) = _parseBbox(params['bbox'], maxBboxDegrees);
 
-    final (disasters, disastersError) = _parseGroup(params['disasters'], 'disasters');
+    final (disasters, disastersError) = _parseGroup(
+      params['disasters'],
+      'disasters',
+    );
     final (spaces, spacesError) = _parseGroup(params['spaces'], 'spaces');
 
     return _ShelterQuery(

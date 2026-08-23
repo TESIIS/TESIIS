@@ -421,17 +421,20 @@ void main() {
       expect(cluster.containsKey('shelter'), isFalse);
     });
 
-    test('a lone shelter inside the bbox comes back as a single cluster', () async {
-      final res = await get(
-        controllerFor(data),
-        '/shelters/clusters?zoom=13&bbox=120.0,22.0,121.0,23.0',
-      );
-      final clusters = (res['body'] as Map)['clusters'] as List;
-      expect(clusters, hasLength(1));
-      final cluster = clusters.single as Map<String, dynamic>;
-      expect(cluster['count'], 1);
-      expect((cluster['shelter'] as Map)['名稱'], '丙所');
-    });
+    test(
+      'a lone shelter inside the bbox comes back as a single cluster',
+      () async {
+        final res = await get(
+          controllerFor(data),
+          '/shelters/clusters?zoom=13&bbox=120.0,22.0,121.0,23.0',
+        );
+        final clusters = (res['body'] as Map)['clusters'] as List;
+        expect(clusters, hasLength(1));
+        final cluster = clusters.single as Map<String, dynamic>;
+        expect(cluster['count'], 1);
+        expect((cluster['shelter'] as Map)['名稱'], '丙所');
+      },
+    );
 
     test('no bbox means the whole country, not nothing', () async {
       final res = await get(controllerFor(data), '/shelters/clusters?zoom=8');
@@ -452,7 +455,10 @@ void main() {
         400,
       );
       expect(
-        (await get(controllerFor(data), '/shelters/clusters?zoom=20'))['status'],
+        (await get(
+          controllerFor(data),
+          '/shelters/clusters?zoom=20',
+        ))['status'],
         400,
       );
     });
@@ -476,10 +482,7 @@ void main() {
         '/shelters/clusters?zoom=13&disasters=volcano',
       );
       expect(res['status'], 400);
-      expect(
-        (res['body'] as Map)['message'],
-        contains('unknown key'),
-      );
+      expect((res['body'] as Map)['message'], contains('unknown key'));
     });
 
     test('carries the data-freshness metadata', () async {
