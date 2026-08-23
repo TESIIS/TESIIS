@@ -1,7 +1,7 @@
 import 'package:flutter_codefest/data/datasources/api.dart';
+import 'package:flutter_codefest/data/models/cluster_page.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/data/models/shelter_page.dart';
-import 'package:flutter_codefest/domain/marker_clustering.dart';
 
 /// Query parameters for one `GET /shelters/clusters` request.
 ///
@@ -30,14 +30,11 @@ Map<String, String> clustersQueryParams({
 /// embed the full shelter), so a country-wide view transfers a few hundred
 /// centroids instead of ~5,850 records. Omit `bbox` for "the whole country" —
 /// the clusters endpoint deliberately has no 2° bbox cap.
-Future<List<ShelterCluster>> fetchClusters(Map<String, String> params) async {
-  final body =
-      await ApiService.get('/shelters/clusters', queryParams: params)
-          as Map<String, dynamic>;
-  return [
-    for (final cluster in body['clusters'] as List<dynamic>? ?? const [])
-      ShelterCluster.fromServerJson(cluster as Map<String, dynamic>),
-  ];
+Future<ClusterPage> fetchClusters(Map<String, String> params) async {
+  return ClusterPage.fromJson(
+    await ApiService.get('/shelters/clusters', queryParams: params)
+        as Map<String, dynamic>,
+  );
 }
 
 /// Query parameters for one page of `GET /shelters`.

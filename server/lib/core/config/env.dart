@@ -44,6 +44,12 @@ class Env {
       'ED6CF735-6C03-4573-A882-72C1BEC799CB/resource/'
       '54550E2F-4567-4C8F-BD2E-E54E9D0386B8/download';
 
+  /// How long to wait on the NFA point file before giving up.
+  ///
+  /// The download is ~1.5 MB from a government host, so this is generous
+  /// rather than tight; the point is that there *is* a bound.
+  static const defaultUpstreamTimeoutSeconds = 15;
+
   /// The committed nationwide snapshot — the floor `ShelterRepositoryImpl`
   /// falls back to when a live NFA fetch fails or looks implausible.
   static const defaultSnapshotCsvPath = 'data/shelters_nationwide.csv';
@@ -129,6 +135,22 @@ class Env {
   static int get maxSnapshotItems =>
       int.tryParse(_read('MAX_SNAPSHOT_ITEMS') ?? '') ??
       defaultMaxSnapshotItems;
+
+  /// Upstream request timeout. An upstream that *hangs* rather than fails
+  /// is the case this exists for: without a bound, the repository's
+  /// in-flight de-duplication parks every subsequent request on the same
+  /// future that will never complete, the catch clause never runs, and the
+  /// stale-data fallback it guards is therefore unreachable. Values at or
+  /// below zero are clamped to the default rather than disabling the bound,
+  /// which is the one thing this must never do.
+  static Duration get upstreamTimeout {
+    final seconds =
+        int.tryParse(_read('UPSTREAM_TIMEOUT_SECONDS') ?? '') ??
+        defaultUpstreamTimeoutSeconds;
+    return Duration(
+      seconds: seconds <= 0 ? defaultUpstreamTimeoutSeconds : seconds,
+    );
+  }
 
   /// Cache lifetime. `0` is a legitimate value meaning "never serve from
   /// cache"; negative values are clamped to it rather than silently producing

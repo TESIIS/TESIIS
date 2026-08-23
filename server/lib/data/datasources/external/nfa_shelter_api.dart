@@ -12,13 +12,26 @@ import '../../../core/errors/app_exception.dart';
 /// no pagination and already carries 經度/緯度 — see `NfaShelterMapper` for
 /// how a row becomes a `Shelter`.
 class NfaShelterApi {
-  NfaShelterApi({http.Client? client}) : _client = client ?? http.Client();
+  NfaShelterApi({http.Client? client, Duration? timeout})
+    : _client = client ?? http.Client(),
+      _timeout = timeout ?? Env.upstreamTimeout;
 
   final http.Client _client;
+  final Duration _timeout;
 
   Future<List<Map<String, String>>> fetchRawRows() async {
     final uri = Uri.parse(Env.nfaPointFileUrl);
-    final resp = await _client.get(uri);
+    // Bounded on purpose: a hang here is worse than a failure, because the
+    // repository's fallback to cached/snapshot data lives in a catch clause
+    // that an unresolved future never reaches.
+    final resp = await _client
+        .get(uri)
+        .timeout(
+          _timeout,
+          onTimeout: () => throw ServerException(
+            'NFA point file timed out after ${_timeout.inSeconds}s',
+          ),
+        );
 
     if (resp.statusCode != 200) {
       throw ServerException(

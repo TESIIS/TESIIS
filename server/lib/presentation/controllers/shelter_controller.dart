@@ -32,6 +32,7 @@ class _ShelterQuery {
     required this.bbox,
     required this.bboxError,
     required this.groupError,
+    required this.hazardError,
   });
 
   final String? q;
@@ -63,6 +64,15 @@ class _ShelterQuery {
   /// not a known hazard, so the handler can 400 rather than silently
   /// dropping a filter the client thought it applied.
   final String? groupError;
+
+  /// Set instead of [hazards] when a flat hazard parameter carries a value
+  /// outside the Y/N vocabulary — see [_parseHazards].
+  final String? hazardError;
+
+  /// The first parse error, if any. Every handler rejects on this before
+  /// touching the data, so a filter that could not be applied never comes
+  /// back as a 200 full of unfiltered records.
+  String? get validationError => bboxError ?? groupError ?? hazardError;
 
   /// A box larger than this is rejected: the whole point of `bbox` is to let
   /// a client ask for "what's on screen", not download the entire country in
@@ -107,11 +117,42 @@ class _ShelterQuery {
     'quake': '震災',
     'landslide': '土石流',
     'tsunami': '海嘯',
+    'nuclear': '核子事故',
     'relief': '救濟支站',
     'accessible': '無障礙設施',
     'indoor': '室內',
     'outdoor': '室外',
   };
+
+  /// Validates the *values* of the hazard parameters.
+  ///
+  /// An unrecognised value used to be treated as "condition unset", which
+  /// made a typo silently return the whole dataset: `?flood=BOGUS` answered
+  /// 200 with all 5,854 records, indistinguishable from an unfiltered query.
+  /// For a shelter lookup that is the worst possible failure mode — the
+  /// caller believes they are looking at flood-capable shelters only. A
+  /// filter that could not be applied is now an error, same as a malformed
+  /// bbox or an unknown group key.
+  static (Map<String, String>, String?) _parseHazards(
+    Map<String, String> params,
+  ) {
+    final hazards = <String, String>{};
+    for (final entry in _hazardAliases.entries) {
+      final value = params[entry.key] ?? params[entry.value];
+      if (value == null || value.isEmpty) continue;
+      if (!HazardFlag.isYes(value) &&
+          !HazardFlag.isNo(value) &&
+          !HazardFlag.isAliasRequest(value)) {
+        return (
+          const {},
+          '${entry.key} has unknown value "$value" '
+              '(valid: Y, N, or one of ${HazardFlag.yesAliases.join(", ")})',
+        );
+      }
+      hazards[entry.value] = value;
+    }
+    return (hazards, null);
+  }
 
   /// The keys a group parameter accepts, mapped to the Chinese column names
   /// the service filters on. English-only on the wire for groups — the flat
@@ -122,6 +163,7 @@ class _ShelterQuery {
       'earthquake': '震災',
       'landslide': '土石流',
       'tsunami': '海嘯',
+      'nuclear': '核子事故',
     },
     'spaces': {'indoor': '室內', 'outdoor': '室外'},
   };
@@ -151,11 +193,7 @@ class _ShelterQuery {
   }) {
     final params = request.url.queryParameters;
 
-    final hazards = <String, String>{};
-    _hazardAliases.forEach((en, zh) {
-      final value = params[en] ?? params[zh];
-      if (value != null && value.isNotEmpty) hazards[zh] = value;
-    });
+    final (hazards, hazardError) = _parseHazards(params);
 
     // `villages` accepts either repeated parameters (?villages=A&villages=B)
     // or one delimited value (?villages=A,B).
@@ -189,6 +227,7 @@ class _ShelterQuery {
       bbox: bbox,
       bboxError: bboxError,
       groupError: disastersError ?? spacesError,
+      hazardError: hazardError,
     );
   }
 
@@ -316,8 +355,9 @@ class ShelterController {
   Future<Response> _getShelters(Request request) async {
     try {
       final query = _ShelterQuery.from(request);
-      if (query.bboxError != null) return _badRequest(query.bboxError!);
-      if (query.groupError != null) return _badRequest(query.groupError!);
+      if (query.validationError case final message?) {
+        return _badRequest(message);
+      }
 
       final params = request.url.queryParameters;
       // limit/offset page the *filtered* result, not the upstream fetch.
@@ -327,11 +367,17 @@ class ShelterController {
       // it silently truncated the response to under a fifth of the dataset
       // with no error and no signal — the client had no way to know it
       // didn't have everything. `truncated` makes that visible either way.
-      final limit = int.tryParse(params['limit'] ?? '') ?? Env.maxSnapshotItems;
+      final requestedLimit =
+          int.tryParse(params['limit'] ?? '') ?? Env.maxSnapshotItems;
       final offset = int.tryParse(params['offset'] ?? '') ?? 0;
-      if (limit < 0 || offset < 0) {
+      if (requestedLimit < 0 || offset < 0) {
         return _badRequest('limit and offset must not be negative');
       }
+      // Capped rather than rejected, so an over-large limit still returns
+      // usable data with `truncated` telling the caller to page. The cap
+      // matters because one unauthenticated request could otherwise ask for
+      // the whole dataset — 4.16 MB uncompressed — in a loop.
+      final limit = requestedLimit.clamp(0, Env.maxSnapshotItems);
 
       final filtered = _applyFilters(await service.fetchAllShelters(), query);
       final paged = filtered.skip(offset).take(limit);
@@ -362,8 +408,9 @@ class ShelterController {
         request,
         maxBboxDegrees: _ShelterQuery._maxClusterBboxDegrees,
       );
-      if (query.bboxError != null) return _badRequest(query.bboxError!);
-      if (query.groupError != null) return _badRequest(query.groupError!);
+      if (query.validationError case final message?) {
+        return _badRequest(message);
+      }
 
       final zoom = double.tryParse(request.url.queryParameters['zoom'] ?? '');
       if (zoom == null || zoom < 6 || zoom > 19) {
@@ -394,8 +441,9 @@ class ShelterController {
   Future<Response> _getShelterStats(Request request) async {
     try {
       final query = _ShelterQuery.from(request);
-      if (query.bboxError != null) return _badRequest(query.bboxError!);
-      if (query.groupError != null) return _badRequest(query.groupError!);
+      if (query.validationError case final message?) {
+        return _badRequest(message);
+      }
 
       // Off by default — see ShelterService.computeStats's doc comment.
       // ?include=items,shelters opts back in.
@@ -419,6 +467,7 @@ class ShelterController {
         bbox: query.bbox,
         includeItems: include.contains('items'),
         includeShelters: include.contains('shelters'),
+        includeVillages: include.contains('villages'),
       );
 
       return _ok({
@@ -471,8 +520,9 @@ class ShelterController {
       if (limit < 0) return _badRequest('limit must not be negative');
 
       final query = _ShelterQuery.from(request);
-      if (query.bboxError != null) return _badRequest(query.bboxError!);
-      if (query.groupError != null) return _badRequest(query.groupError!);
+      if (query.validationError case final message?) {
+        return _badRequest(message);
+      }
       final filtered = _applyFilters(await service.fetchAllShelters(), query);
 
       final withDistance = <(Shelter, double)>[];

@@ -20,6 +20,7 @@ class Shelter {
     required this.earthquake,
     required this.landslide,
     required this.tsunami,
+    required this.nuclear,
     required this.reliefStation,
     required this.accessible,
     required this.indoor,
@@ -53,6 +54,11 @@ class Shelter {
   final String earthquake;
   final String landslide;
   final String tsunami;
+
+  /// 核子事故 — only the nationwide NFA dataset carries this, so it is an
+  /// empty string for anything built before the nationwide expansion.
+  final String nuclear;
+
   final String reliefStation;
   final String accessible;
   final String indoor;
@@ -66,9 +72,11 @@ class Shelter {
   final String managerPhone;
   final String remarks;
 
-  /// 座標y. Null for the shelters the coordinate table could not locate —
-  /// about 8% of the dataset, mostly parks and intersections whose 門牌地址 is
-  /// a description rather than an address.
+  /// 座標y. Nullable because the wire format allows it, but every shelter in
+  /// the nationwide dataset has an exact coordinate: the NFA point file
+  /// carries WGS84 columns of its own, and a row that fails the per-county
+  /// bounds check is dropped rather than kept without one. The ~8% gap this
+  /// once described belonged to the retired Taipei address-join pipeline.
   final double? latitude;
 
   /// 座標x.
@@ -117,6 +125,7 @@ class Shelter {
       earthquake: _string(json['震災']),
       landslide: _string(json['土石流']),
       tsunami: _string(json['海嘯']),
+      nuclear: _string(json['核子事故']),
       reliefStation: _string(json['救濟支站']),
       accessible: _string(json['無障礙設施']),
       indoor: _string(json['室內']),
@@ -155,6 +164,7 @@ class Shelter {
     '震災': earthquake,
     '土石流': landslide,
     '海嘯': tsunami,
+    '核子事故': nuclear,
     '救濟支站': reliefStation,
     '無障礙設施': accessible,
     '室內': indoor,

@@ -3,6 +3,19 @@ import 'dart:math' as math;
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:latlong2/latlong.dart';
 
+/// Longitude -> Web Mercator world X, 0..1 across the whole world.
+double mercatorX(double lng) => (lng + 180) / 360;
+
+/// Latitude -> Web Mercator world Y, 0..1 top to bottom.
+///
+/// Clamped to the projection's own latitude limit, past which the transform
+/// diverges — Taiwan is nowhere near it, but a corrupt coordinate would
+/// otherwise produce an infinite bucket index.
+double mercatorY(double lat) {
+  final latRad = lat.clamp(-85.05112878, 85.05112878) * math.pi / 180;
+  return (1 - math.log(math.tan(latRad) + 1 / math.cos(latRad)) / math.pi) / 2;
+}
+
 /// One marker's worth of shelters — a single shelter when [isSingle], or a
 /// group close enough together at the current zoom to draw as one.
 class ShelterCluster {
@@ -75,23 +88,25 @@ List<ShelterCluster> clusterShelters(
 }) {
   if (shelters.isEmpty) return const [];
 
-  // Longitude degrees per pixel at this zoom (Web Mercator, tile size 256).
-  final lngPerPixel = 360 / (256 * math.pow(2, zoom));
-  final cellLng = lngPerPixel * cellPixels;
+  // Cell size in Web Mercator world units (0..1 on both axes), where one
+  // unit is the same number of pixels horizontally and vertically at a given
+  // zoom. Bucketing here is what makes a cell actually square on screen;
+  // bucketing in degrees cannot, because a degree of latitude and a degree of
+  // longitude are different distances on screen.
+  //
+  // The previous version divided each shelter's raw latitude by a cell size
+  // that itself varied with that latitude, which is not a uniform grid at
+  // all: cells came out 38% too tall at 屏東 and 53% at 連江, so markers
+  // merged vertically long before they merged horizontally. `ShelterService`
+  // in the server carried the identical code — which is why the two agreed
+  // with each other and neither test suite noticed — and must be changed
+  // alongside this for the same reason.
+  final cell = cellPixels / (256 * math.pow(2, zoom));
 
   final buckets = <(int, int), List<Shelter>>{};
   for (final shelter in shelters) {
-    // Latitude degrees per pixel scales with cos(latitude) under Web
-    // Mercator, so it's computed per-shelter rather than once — cheap at a
-    // few thousand shelters, and correct at both the equator-ish south
-    // (Taiwan is ~22-26°N, so the difference matters less than at high
-    // latitudes, but there is no reason to hardcode an approximation when
-    // the real formula is one `cos` call).
-    final latRad = shelter.latitude! * math.pi / 180;
-    final cellLat =
-        (lngPerPixel * cellPixels) / math.cos(latRad).abs().clamp(0.01, 1.0);
-    final cellX = (shelter.longitude! / cellLng).floor();
-    final cellY = (shelter.latitude! / cellLat).floor();
+    final cellX = (mercatorX(shelter.longitude!) / cell).floor();
+    final cellY = (mercatorY(shelter.latitude!) / cell).floor();
     buckets.putIfAbsent((cellX, cellY), () => []).add(shelter);
   }
 

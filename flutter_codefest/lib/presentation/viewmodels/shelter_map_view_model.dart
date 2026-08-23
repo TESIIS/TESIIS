@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/map/basemap.dart';
 import 'package:flutter_codefest/data/datasources/request_cache.dart';
+import 'package:flutter_codefest/data/models/cluster_page.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/data/models/shelter_page.dart';
 import 'package:flutter_codefest/data/repositories/shelters_repository.dart'
@@ -15,7 +16,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 typedef FetchClusters =
-    Future<List<ShelterCluster>> Function(Map<String, String> params);
+    Future<ClusterPage> Function(Map<String, String> params);
 typedef FetchShelterPage =
     Future<ShelterPage> Function(Map<String, String> params);
 typedef FetchNearbyShelters =
@@ -124,6 +125,13 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool _isShowingCachedData = false;
   DateTime? _cachedAt;
 
+  /// The server's own account of how current the data is: 'live' when it
+  /// reached the upstream point file, 'cached' when it is serving its last
+  /// good fetch, 'snapshot' when it fell all the way back to the committed
+  /// CSV. Distinct from [isShowingCachedData], which is about *this device*
+  /// being offline.
+  String? _dataFreshness;
+
   /// Monotonic ids guarding the async fetch paths: a response that arrives
   /// after the user has moved on (panned again, typed a new query) is a
   /// stale answer and must not overwrite newer state.
@@ -172,6 +180,12 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool get isLocationSuccess => _isLocationSuccess;
   bool get isShowingCachedData => _isShowingCachedData;
   DateTime? get cachedAt => _cachedAt;
+  String? get dataFreshness => _dataFreshness;
+
+  /// True when the server is not serving live upstream data, so the map is
+  /// showing something older than it looks.
+  bool get isServingStaleData =>
+      _dataFreshness != null && _dataFreshness != 'live';
 
   // ---------------------------------------------------------------------
   // Map clusters
@@ -206,26 +220,21 @@ class ShelterMapViewModel extends ChangeNotifier {
     final key = RequestCache.keyFor('/shelters/clusters', params);
 
     try {
-      final clusters = await _fetchClusters(params);
+      final page = await _fetchClusters(params);
       if (id != _clusterRequestId) return;
-      _clusters = clusters;
+      _clusters = page.clusters;
+      _dataFreshness = page.dataFreshness;
       _isShowingCachedData = false;
       _cachedAt = null;
-      unawaited(
-        _cachePut(key, {
-          'clusters': [for (final c in clusters) c.toJson()],
-        }),
-      );
+      unawaited(_cachePut(key, page.toJson()));
       notifyListeners();
     } catch (_) {
       final cached = await _cacheGet(key);
       if (id != _clusterRequestId) return;
       if (cached != null) {
-        _clusters = [
-          for (final c
-              in cached.body['clusters'] as List<dynamic>? ?? const <dynamic>[])
-            ShelterCluster.fromServerJson(c as Map<String, dynamic>),
-        ];
+        final page = ClusterPage.fromJson(cached.body);
+        _clusters = page.clusters;
+        _dataFreshness = page.dataFreshness;
         _isShowingCachedData = true;
         _cachedAt = cached.cachedAt;
       } else {
@@ -456,6 +465,7 @@ class ShelterMapViewModel extends ChangeNotifier {
       _searchTotal = page.total;
       _searchOffset = offset + page.shelters.length;
       _searchHasMore = page.truncated;
+      _dataFreshness = page.dataFreshness ?? _dataFreshness;
       _isShowingCachedData = false;
       _cachedAt = null;
       unawaited(_cachePut(key, page.toJson()));

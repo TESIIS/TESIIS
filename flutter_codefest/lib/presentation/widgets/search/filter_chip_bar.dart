@@ -14,6 +14,7 @@ const _filterDefs = [
   _FilterDef('海嘯', 'tsunami', Icons.waves),
   _FilterDef('地震', 'earthquake', Icons.warning),
   _FilterDef('水災', 'flood', Icons.water_drop),
+  _FilterDef('核子事故', 'nuclear', Icons.dangerous),
   _FilterDef('室內', 'indoor', Icons.home),
   _FilterDef('室外', 'outdoor', Icons.park),
 ];

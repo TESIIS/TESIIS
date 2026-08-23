@@ -3,6 +3,8 @@ import 'package:server/data/datasources/local/coordinate_source.dart';
 import 'package:server/domain/entities/shelter.dart';
 import 'package:server/domain/repositories/shelter_repository.dart';
 import 'package:server/domain/services/shelter_service.dart';
+import 'dart:math' as math;
+
 import 'package:test/test.dart';
 
 import 'support/fakes.dart';
@@ -196,7 +198,11 @@ void main() {
       // Shelter 1 is in 林興里 and also serves 林興里. Counting the 村里 column
       // and the 服務里別 expansion separately double-counts it.
       final byRegion =
-          service.computeStats(data: data, includeShelters: true)['byRegion']
+          service.computeStats(
+                data: data,
+                includeShelters: true,
+                includeVillages: true,
+              )['byRegion']
               as List;
       final taipei = byRegion.first as Map<String, dynamic>;
       final townships = taipei['townships'] as List;
@@ -244,8 +250,20 @@ void main() {
           (byRegion.first as Map<String, dynamic>)['townships'] as List;
       final firstTownship = townships.first as Map<String, dynamic>;
       expect(firstTownship.containsKey('shelters'), isFalse);
+      // The per-village breakdown is 95% of an unfiltered nationwide
+      // response and its only consumer never reads it, so it is off by
+      // default too — ?include=villages opts back in.
+      expect(firstTownship.containsKey('villages'), isFalse);
+
+      final withVillages =
+          service.computeStats(data: data, includeVillages: true)['byRegion']
+              as List;
+      final township =
+          ((withVillages.first as Map<String, dynamic>)['townships'] as List)
+                  .first
+              as Map<String, dynamic>;
       final firstVillage =
-          (firstTownship['villages'] as List).first as Map<String, dynamic>;
+          (township['villages'] as List).first as Map<String, dynamic>;
       expect(firstVillage.containsKey('shelters'), isFalse);
     });
 
@@ -276,7 +294,9 @@ void main() {
       ];
 
       test('city level aggregates across every shelter in the city', () {
-        final byRegion = service.computeStats(data: mixed)['byRegion'] as List;
+        final byRegion =
+            service.computeStats(data: mixed, includeVillages: true)['byRegion']
+                as List;
         final taipei = byRegion.first as Map<String, dynamic>;
         final quality = taipei['coordinateQuality'] as Map<String, dynamic>;
 
@@ -288,7 +308,9 @@ void main() {
       });
 
       test('township level scopes to that township only', () {
-        final byRegion = service.computeStats(data: mixed)['byRegion'] as List;
+        final byRegion =
+            service.computeStats(data: mixed, includeVillages: true)['byRegion']
+                as List;
         final townships =
             (byRegion.first as Map<String, dynamic>)['townships'] as List;
         final zhongzheng =
@@ -302,7 +324,9 @@ void main() {
       });
 
       test('village level counts a shelter once even if reached via 服務里別', () {
-        final byRegion = service.computeStats(data: mixed)['byRegion'] as List;
+        final byRegion =
+            service.computeStats(data: mixed, includeVillages: true)['byRegion']
+                as List;
         final townships =
             (byRegion.first as Map<String, dynamic>)['townships'] as List;
         final zhongzheng =
@@ -493,6 +517,67 @@ void main() {
 
     test('an empty list yields no clusters', () {
       expect(service.clusterShelters(data: const [], zoom: 13), isEmpty);
+    });
+
+    // Mirrors `marker_clustering_test.dart`'s geometry group in the app. The
+    // two implementations must break markers apart at the same zooms, so the
+    // property is asserted on both sides rather than trusting the comment
+    // that says they match.
+    group('cell geometry is square in screen space', () {
+      double lngDegreesToPixels(double degrees, double zoom) =>
+          degrees * 256 * math.pow(2, zoom) / 360;
+
+      double latDegreesToPixels(double degrees, double zoom, double atLat) =>
+          lngDegreesToPixels(degrees, zoom) /
+          math.cos(atLat * math.pi / 180).abs();
+
+      /// Cell size in degrees, from how many distinct cells a dense run of
+      /// points spanning [span] degrees lands in — every occupied cell yields
+      /// exactly one cluster, so the cluster count is the cell count.
+      double cellDegrees(
+        double zoom,
+        double atLat, {
+        required bool vertical,
+        required double span,
+      }) {
+        const steps = 4000;
+        final data = [
+          for (var i = 0; i < steps; i++)
+            shelter(
+              id: i,
+              y: vertical ? atLat + span * i / steps : atLat,
+              x: vertical ? 121.0 : 121.0 + span * i / steps,
+            ),
+        ];
+        return span / service.clusterShelters(data: data, zoom: zoom).length;
+      }
+
+      for (final (zoom, lat) in [
+        (15.0, 22.0),
+        (15.0, 25.1),
+        (17.0, 23.5),
+        (17.0, 26.4),
+      ]) {
+        test('zoom $zoom at ${lat}N', () {
+          final span = 40 * 360 / (256 * math.pow(2, zoom)) * 80;
+          final widthPx = lngDegreesToPixels(
+            cellDegrees(zoom, lat, vertical: false, span: span),
+            zoom,
+          );
+          final heightPx = latDegreesToPixels(
+            cellDegrees(zoom, lat, vertical: true, span: span),
+            zoom,
+            lat,
+          );
+
+          expect(widthPx, closeTo(80, 4), reason: 'cellPixels is 80');
+          expect(
+            heightPx / widthPx,
+            closeTo(1.0, 0.05),
+            reason: 'cells must be square on screen, not $widthPx x $heightPx',
+          );
+        });
+      }
     });
   });
 }

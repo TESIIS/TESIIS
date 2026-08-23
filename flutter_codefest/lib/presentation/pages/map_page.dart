@@ -45,6 +45,14 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
 
   /// MapController throws if it is driven before the map has laid out.
   bool _isMapReady = false;
+
+  /// The zoom `_handleLocate` wanted, when the fix arrived before the map had
+  /// laid out and the camera could not be driven yet. `initState` starts
+  /// locating immediately, so on a warm permission grant this is the normal
+  /// path, not the rare one: without it the map settled on the user's
+  /// position at the nationwide fallback zoom while the nearby panel was
+  /// already scoped to a 1.5 km radius.
+  double? _pendingLocateZoom;
   Timer? _idleTimer;
 
   /// Drives [_animatedMapMove]. Tracked so a move started while a previous
@@ -81,12 +89,20 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
 
   void _onMapReady() {
     _isMapReady = true;
+    final here = _viewModel.currentLatLng;
+    if (here != null) {
+      _mapController.move(
+        here,
+        _pendingLocateZoom ?? _mapController.camera.zoom,
+      );
+      _pendingLocateZoom = null;
+    }
+    // After the move, not before: loading clusters for the pre-move camera
+    // fetched markers for a viewport that was about to be replaced.
     _viewModel.loadClusters(
       _mapController.camera.visibleBounds,
       _mapController.camera.zoom,
     );
-    final here = _viewModel.currentLatLng;
-    if (here != null) _mapController.move(here, _mapController.camera.zoom);
   }
 
   /// Fires continuously while the map moves, so the real work is debounced
@@ -94,7 +110,15 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   void _onPositionChanged(MapCamera camera, bool hasGesture) {
     _idleTimer?.cancel();
     _idleTimer = Timer(MapConstants.idleDebounce, () {
-      if (!mounted || _viewModel.isSearching) return;
+      if (!mounted) return;
+      if (_viewModel.isSearching) {
+        // Search results are clustered client-side in `_buildContent` at the
+        // current zoom, but nothing else rebuilds this screen while the map
+        // moves — the view model is not fetching. Without this the pins keep
+        // the grouping from whatever zoom the search started at.
+        setState(() {});
+        return;
+      }
       _viewModel.loadClusters(camera.visibleBounds, camera.zoom);
       unawaited(
         _viewModel.refreshNearbyShelters(
@@ -238,7 +262,12 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       radiusMeters: MapConstants.nearbyRadiusForZoom(targetZoom),
     );
     final here = _viewModel.currentLatLng;
-    if (here != null && _isMapReady) _mapController.move(here, targetZoom);
+    if (here == null) return;
+    if (_isMapReady) {
+      _mapController.move(here, targetZoom);
+    } else {
+      _pendingLocateZoom = targetZoom;
+    }
   }
 
   /// Hands [shelter] to whatever map app the device has.
@@ -417,6 +446,18 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
                         message:
                             '顯示上次快取資料'
                             '${vm.cachedAt != null ? '（更新於 ${_formatCachedAt(vm.cachedAt!)}）' : ''}',
+                      )
+                    : null,
+              ),
+
+              _animatedSlot(
+                vm.isServingStaleData
+                    ? StatusBanner(
+                        tone: StatusTone.info,
+                        icon: Icons.history,
+                        message: vm.dataFreshness == 'snapshot'
+                            ? '離線備援資料：無法連上內政部消防署，顯示的是隨程式封存的快照'
+                            : '伺服器暫存資料：內政部消防署目前無回應，顯示的是上次成功取得的資料',
                       )
                     : null,
               ),
