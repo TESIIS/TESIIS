@@ -187,7 +187,9 @@ flutter analyze                   # 應為 0 issues
 flutter test                      # 應為 74 passed
 ```
 
-GitHub Actions 會執行後端與 Flutter 的靜態分析、格式檢查、測試、Web 建置、Docker Compose 建置、Playwright 端對端測試，以及 Git 歷史的機密掃描。完整設定見 [ci.yml](.github/workflows/ci.yml)。
+GitHub Actions 會執行後端與 Flutter 的靜態分析、格式檢查、測試、Web 建置、Docker Compose 建置、Playwright 端對端測試，以及 Git 歷史的機密掃描。master 通過後另外建置 `linux/amd64` + `linux/arm64` 多架構映像並推送到 [GHCR](https://github.com/orgs/TESIIS/packages)（`ghcr.io/tesiis/server`、`ghcr.io/tesiis/web`），部署時直接 `docker pull` 使用。完整設定見 [ci.yml](.github/workflows/ci.yml)。
+
+正式站每 15 分鐘由 [monitor.yml](.github/workflows/monitor.yml) 檢查一次 `/healthz`（狀態、22 縣市涵蓋、座標品質、延遲），異常時透過 GitHub 內建的排程失敗通知告警。
 
 端對端測試需要完整服務：
 
