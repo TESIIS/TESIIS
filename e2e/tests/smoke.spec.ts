@@ -25,37 +25,118 @@ test.use({
   geolocation: { latitude: 25.0478, longitude: 121.517 },
 });
 
+/// Types [query] into the search field and waits until the app actually
+/// fires the search request.
+///
+/// Flutter Web can drop a programmatic `fill()` that lands while the search
+/// field is still animating in: the input event never reaches the framework,
+/// the field stays empty, and no request is ever sent. So wait for the field
+/// to exist, focus it first, and verify the request really went out —
+/// retyping once if it did not.
+async function searchShelters(page: Page, query: string) {
+  const field = page.getByRole('textbox');
+  await field.waitFor({ state: 'visible', timeout: 10_000 });
+  await field.click({ timeout: 10_000 });
+
+  const requestFired = () =>
+    page
+      .waitForRequest((request) => request.url().includes('/shelters?q='), {
+        timeout: 3_000,
+      })
+      .then(() => true)
+      .catch(() => false);
+
+  let fired = requestFired();
+  await field.fill(query, { timeout: 10_000 });
+  if (!(await fired)) {
+    await field.fill('', { timeout: 10_000 });
+    fired = requestFired();
+    await field.fill(query, { timeout: 10_000 });
+    await fired;
+  }
+}
+
+/// Asks the API for one real shelter instead of hardcoding a name.
+///
+/// A fixture that names one specific facility breaks every time upstream
+/// renames or re-abbreviates it — which already happened once going
+/// nationwide: Taipei OpenData wrote out "臺北市立螢橋國民中學" in full, but
+/// the nationwide NFA dataset that replaced it as the primary source
+/// abbreviates the same facility to "螢橋國中". Querying live sidesteps
+/// that entirely.
+async function fetchSampleShelter(
+  request: import('@playwright/test').APIRequestContext,
+  baseURL: string,
+  city: string,
+) {
+  const res = await request.get(`${baseURL}/api/shelters?city=${encodeURIComponent(city)}&limit=1`);
+  const body = await res.json();
+  const shelter = body.data[0];
+  return { name: shelter['名稱'] as string, city: shelter['縣市'] as string };
+}
+
 test.describe('shelter web smoke', () => {
   test('homepage loads and the map renders', async ({ page }) => {
+    // This is usually the first test to touch a fresh browser profile, so it
+    // pays the one-time cost of downloading and compiling CanvasKit/WASM with
+    // no HTTP cache yet warmed by an earlier test — the default 30s budget
+    // is tight for that even before any assertion runs.
+    test.setTimeout(60_000);
+
     await page.goto('/');
-    await expect(page).toHaveTitle('臺北市避難設施資訊整合系統');
+    await expect(page).toHaveTitle('臺灣避難收容處所資訊整合系統');
     await enableSemantics(page);
 
-    await expect(page.getByText('臺北避難設施地圖')).toBeVisible();
-  });
-
-  test('search returns results for a known shelter', async ({ page }) => {
-    await page.goto('/');
-    await enableSemantics(page);
-
-    await page.getByRole('button', { name: '搜尋' }).click();
-    await page.getByRole('textbox').fill('螢橋');
-
-    await expect(page.getByText('螢橋國民中學', { exact: false }).first()).toBeVisible({
+    await expect(page.getByText('全臺避難設施地圖')).toBeVisible({
       timeout: 15_000,
     });
   });
 
-  test('opening a shelter shows the navigation button', async ({ page }) => {
+  test('search returns results for a real shelter', async ({ page, request, baseURL }) => {
+    test.setTimeout(60_000);
+
+    const sample = await fetchSampleShelter(request, baseURL!, '臺北市');
+
     await page.goto('/');
     await enableSemantics(page);
 
     await page.getByRole('button', { name: '搜尋' }).click();
-    await page.getByRole('textbox').fill('螢橋');
-    await page.getByText('螢橋國民中學', { exact: false }).first().click();
+    // A short, unambiguous fragment of the real name — full names sometimes
+    // carry punctuation/spacing quirks that don't round-trip through typing.
+    const fragment = sample.name.slice(0, Math.min(4, sample.name.length));
+    await searchShelters(page, fragment);
+
+    await expect(page.getByText(fragment, { exact: false }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
+  test('opening a shelter shows the navigation button', async ({ page, request, baseURL }) => {
+    test.setTimeout(60_000);
+
+    const sample = await fetchSampleShelter(request, baseURL!, '高雄市');
+
+    await page.goto('/');
+    await enableSemantics(page);
+
+    await page.getByRole('button', { name: '搜尋' }).click();
+    const fragment = sample.name.slice(0, Math.min(4, sample.name.length));
+    await searchShelters(page, fragment);
+    await page.getByText(fragment, { exact: false }).first().click();
 
     await expect(page.getByText('開始導航', { exact: false })).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test('the county picker surfaces nationwide coverage', async ({ request, baseURL }) => {
+    const res = await request.get(`${baseURL}/api/regions`);
+    const body = await res.json();
+    expect(body.regions).toHaveLength(22);
+    // Every county should have at least one shelter — a regression here
+    // would mean the nationwide snapshot silently lost coverage for one.
+    for (const region of body.regions) {
+      expect(region.count, `${region.city} has zero shelters`).toBeGreaterThan(0);
+    }
   });
 });
