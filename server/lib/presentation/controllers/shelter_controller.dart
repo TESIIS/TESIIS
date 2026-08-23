@@ -1,12 +1,12 @@
 // lib/presentation/controllers/shelter_controller.dart
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:logging/logging.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../../core/config/env.dart';
+import '../../core/geo/distance.dart';
 import '../../core/geo/taiwan_bounds.dart' show GeoBox;
 import '../../domain/entities/shelter.dart';
 import '../../domain/entities/shelter_fields.dart';
@@ -478,7 +478,7 @@ class ShelterController {
       final withDistance = <(Shelter, double)>[];
       for (final shelter in filtered) {
         if (!shelter.hasCoordinate) continue;
-        final distance = _haversineMeters(lat, lng, shelter.y!, shelter.x!);
+        final distance = haversineMeters(lat, lng, shelter.y!, shelter.x!);
         if (radius != null && distance > radius) continue;
         withDistance.add((shelter, distance));
       }
@@ -505,20 +505,4 @@ class ShelterController {
       return _serverError('GET /shelters/nearby', e, s);
     }
   }
-}
-
-const _earthRadiusMeters = 6371000.0;
-
-double _haversineMeters(double lat1, double lng1, double lat2, double lng2) {
-  double toRadians(double degrees) => degrees * math.pi / 180.0;
-
-  final dLat = toRadians(lat2 - lat1);
-  final dLng = toRadians(lng2 - lng1);
-  final a =
-      math.sin(dLat / 2) * math.sin(dLat / 2) +
-      math.cos(toRadians(lat1)) *
-          math.cos(toRadians(lat2)) *
-          math.sin(dLng / 2) *
-          math.sin(dLng / 2);
-  return _earthRadiusMeters * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
 }
