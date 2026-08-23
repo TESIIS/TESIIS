@@ -29,8 +29,8 @@
 需要 Docker Compose。
 
 ```bash
-git clone https://github.com/Twcat0503/2025Taipei-codefest-team30.git
-cd 2025Taipei-codefest-team30
+git clone https://github.com/TESIIS/TESIIS.git
+cd TESIIS
 docker compose up --build
 ```
 

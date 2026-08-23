@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: 安全性問題
-    url: https://github.com/Twcat0503/2025Taipei-codefest-team30/security/advisories/new
+    url: https://github.com/TESIIS/TESIIS/security/advisories/new
     about: 請透過 private vulnerability reporting，不要開公開 issue。
   - name: 上游資料本身有誤（名稱、地址、座標、容納人數、聯絡人）
     url: https://data.gov.tw/dataset/73242
