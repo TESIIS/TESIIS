@@ -42,6 +42,17 @@ TileLayer basemapTileLayer(Basemap basemap) => TileLayer(
   urlTemplate: basemap.urlTemplate,
   userAgentPackageName: 'tw.gov.taipei.codefest.team30.shelter',
   maxNativeZoom: 20,
+  // Without this, every single position-change event during a drag or
+  // zoom re-evaluates which tiles are needed — on a remote WMTS server
+  // this means firing off new tile requests (and the repaints that come
+  // with them landing) many times a second while the gesture is still in
+  // progress, which is what actually shows up as jank, not GPU cost.
+  // flutter_map's own recommendation for this is throttling tile updates
+  // to a fixed interval; 200ms keeps panning smooth while tiles still
+  // settle in well under the time it takes to notice.
+  tileUpdateTransformer: TileUpdateTransformers.throttle(
+    const Duration(milliseconds: 200),
+  ),
   // Keyed so switching basemaps swaps tiles instead of leaving the old
   // ones on screen until each is individually replaced.
   key: ValueKey(basemap),
