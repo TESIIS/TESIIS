@@ -38,7 +38,7 @@ typedef CachePut = Future<void> Function(String key, Map<String, dynamic> body);
 
 Future<Position> _defaultGetCurrentPosition() => Geolocator.getCurrentPosition(
   desiredAccuracy: LocationAccuracy.medium,
-  timeLimit: const Duration(seconds: 5),
+  timeLimit: const Duration(seconds: 15),
 );
 
 Future<Position?> _defaultGetLastKnownPosition() =>
@@ -556,6 +556,9 @@ class ShelterMapViewModel extends ChangeNotifier {
       }
 
       await _applyLocatedPosition(position, requestedRadius);
+    } on TimeoutException {
+      _locationMessage = '定位逾時,請確認訊號後再試一次';
+      _isLocationSuccess = false;
     } catch (e) {
       _locationMessage = '無法取得位置: $e';
       _isLocationSuccess = false;
