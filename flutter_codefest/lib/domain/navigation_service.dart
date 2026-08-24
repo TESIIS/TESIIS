@@ -8,16 +8,11 @@ import 'package:geolocator/geolocator.dart';
 /// longer embeds Google Maps.
 Uri buildNavigationUri(Shelter shelter, {Position? from}) {
   if (shelter.hasCoordinate) {
-    final destination = '${shelter.latitude},${shelter.longitude}';
-    return from != null
-        ? Uri.parse(
-            'https://www.google.com/maps/dir/?api=1'
-            '&origin=${from.latitude},${from.longitude}'
-            '&destination=$destination&travelmode=walking',
-          )
-        : Uri.parse(
-            'https://www.google.com/maps/search/?api=1&query=$destination',
-          );
+    return buildDirectionsUri(
+      lat: shelter.latitude!,
+      lng: shelter.longitude!,
+      from: from,
+    );
   }
 
   // No coordinate: fall back to a text search on the address, which is the
@@ -29,4 +24,25 @@ Uri buildNavigationUri(Shelter shelter, {Position? from}) {
     '${shelter.city}${shelter.district}${shelter.address}',
   );
   return Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+}
+
+/// Builds the Google Maps URL to a bare coordinate — shared by
+/// [buildNavigationUri]'s has-coordinate case and anything else (transit
+/// stops, say) that always has one and never needs the address-search
+/// fallback above.
+Uri buildDirectionsUri({
+  required double lat,
+  required double lng,
+  Position? from,
+}) {
+  final destination = '$lat,$lng';
+  return from != null
+      ? Uri.parse(
+          'https://www.google.com/maps/dir/?api=1'
+          '&origin=${from.latitude},${from.longitude}'
+          '&destination=$destination&travelmode=walking',
+        )
+      : Uri.parse(
+          'https://www.google.com/maps/search/?api=1&query=$destination',
+        );
 }

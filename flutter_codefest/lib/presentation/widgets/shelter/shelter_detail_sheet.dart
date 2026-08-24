@@ -269,9 +269,17 @@ class ShelterDetailSheet extends StatelessWidget {
 
       if (shelter.hasCoordinate)
         NearbyTransitSection(
+          // Without a key tied to the shelter, selecting a different one
+          // reuses the same State object — its `late final` fetch Future
+          // was already resolved for the *previous* shelter's coordinates
+          // and never re-runs, so the section keeps showing stale transit
+          // data. Keying on the shelter forces Flutter to tear down and
+          // recreate the widget (and re-fetch) whenever the selection changes.
+          key: ValueKey(shelter.id),
           lat: shelter.latitude!,
           lng: shelter.longitude!,
           city: shelter.city,
+          currentPosition: currentPosition,
         ),
 
       const SizedBox(height: 16),
