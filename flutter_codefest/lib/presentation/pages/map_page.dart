@@ -7,6 +7,7 @@ import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:flutter_codefest/domain/marker_clustering.dart';
 import 'package:flutter_codefest/domain/navigation_service.dart';
+import 'package:flutter_codefest/presentation/pages/about_page.dart';
 import 'package:flutter_codefest/presentation/pages/data_quality_page.dart';
 import 'package:flutter_codefest/presentation/pages/user_manual_page.dart';
 import 'package:flutter_codefest/presentation/viewmodels/shelter_map_view_model.dart';
@@ -417,6 +418,26 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const UserManualPage()),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 428,
+          child: Material(
+            color: colorScheme.surface,
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: IconButton(
+              tooltip: '關於我們',
+              icon: Icon(
+                Icons.groups_2_outlined,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AboutPage()),
               ),
             ),
           ),

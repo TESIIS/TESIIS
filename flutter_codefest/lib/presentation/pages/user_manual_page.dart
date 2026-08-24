@@ -152,8 +152,6 @@ class UserManualPage extends StatelessWidget {
             const SizedBox(height: 16),
           ],
           const SizedBox(height: 16),
-          _buildAuthorSection(context),
-          const SizedBox(height: 16),
           _buildHelpCard(context),
         ],
       );
@@ -188,8 +186,6 @@ class UserManualPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  _buildAuthorSection(context),
-                  const SizedBox(height: 16),
                   _buildHelpCard(context),
                 ],
               );
@@ -225,71 +221,6 @@ class UserManualPage extends StatelessWidget {
           Text(
             '如有任何問題或建議,歡迎聯絡我們',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuthorSection(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.groups_2_outlined, color: colorScheme.primary),
-              const SizedBox(width: 10),
-              Text(
-                '製作團隊',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '2025 臺北程式設計節城市通微服務大黑客松 · 團隊 30',
-            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '原始成員',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '台貓 · 南宮柳信 · 伊藤蒼太 · Z · q_nnn412',
-            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '後續維護',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '伊藤蒼太 · 台貓',
             style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
           ),
         ],
