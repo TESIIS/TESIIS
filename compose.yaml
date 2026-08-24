@@ -15,6 +15,15 @@ services:
       SNAPSHOT_CSV: data/shelters_nationwide.csv
       CACHE_TTL_SECONDS: "600"
       LOG_LEVEL: info
+      # Optional — TDX-backed /api/transit/* degrades to 503 when these are
+      # unset, which is the default here. Compose only forwards variables
+      # explicitly listed like this; it does NOT auto-inject arbitrary host
+      # env vars, so leaving these out (as this file did before) means no
+      # `.env` or shell export on the host could ever reach the container,
+      # no matter how it's set there.
+      TDX_CLIENT_ID: ${TDX_CLIENT_ID:-}
+      TDX_CLIENT_SECRET: ${TDX_CLIENT_SECRET:-}
+      TDX_TIMEOUT_SECONDS: ${TDX_TIMEOUT_SECONDS:-5}
     expose:
       - "8080"
     healthcheck:

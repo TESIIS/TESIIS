@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   deploy:
-    name: deploy to tcf.itousouta.me
+    name: deploy to tesiis.itousouta.me
     runs-on: ubuntu-latest
     # Manual runs always proceed; push-triggered runs only proceed if CI
     # actually passed — a broken commit must not reach production just

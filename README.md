@@ -4,7 +4,7 @@
 
 <img width="1904" height="1013" alt="截圖" src="https://github.com/user-attachments/assets/f814557a-3eef-4069-98eb-547a86eb68b6" /><br>
 
-目前部署於 [tcf.itousouta.me](https://tcf.itousouta.me)
+目前部署於 [tesiis.itousouta.me](https://tesiis.itousouta.me)
 
 用地圖快速查詢全臺避難收容處所，查看最近設施、搜尋條件、座標可信度，並可直接交給手機上的地圖 App 導航。
 
@@ -172,6 +172,14 @@ curl 'http://localhost:8080/api/transit/nearby?lat=25.0478&lng=121.5170&city=臺
 的 Phase 4），在 [https://tdx.transportdata.tw/](https://tdx.transportdata.tw/) 免費申請。
 `TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 只能留在伺服器環境中，絕不進入 Flutter
 bundle 或版本控制。
+
+**用 Docker Compose 跑時**，上面這張表是 `server/.env`（只有本機直接
+`dart run bin/server.dart` 才會讀）——`docker compose` 認的是**repo 根目錄**的
+`.env`（跟 `compose.yaml`同一層，Compose 會自動讀取來做 `${TDX_CLIENT_ID}` 這類
+變數代換，見 [compose.yaml](compose.yaml) 的 `api` service）。兩個 `.env` 位置
+不一樣、也不會互通；`compose.yaml` 沒明確列出的變數，就算主機上設了也不會被
+帶進容器。忘記在正確位置放這個檔案，就是 TDX 功能部署了卻一直顯示不可用最常見
+的原因。
 
 ## 測試與 CI
 

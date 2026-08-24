@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Query /healthz and evaluate
         env:
-          PROD_URL: ${{ vars.PROD_URL || 'https://tcf.itousouta.me' }}
+          PROD_URL: ${{ vars.PROD_URL || 'https://tesiis.itousouta.me' }}
         run: |
           set -euo pipefail
 
