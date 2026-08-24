@@ -163,4 +163,32 @@ class TdxClient {
     r'$spatialFilter': 'nearby($lat,$lng,${_clampRadius(radiusMeters)})',
     r'$top': '$top',
   });
+
+  /// Real-time predictions for one or more bus stops in a single call —
+  /// TDX's `$filter` accepts an `or` of `StopUID eq '...'` clauses, so a
+  /// whole page of nearby stops can be queried together instead of one
+  /// request per stop. Callers must not pass an empty [stopUids].
+  ///
+  /// `top` is generous by default: a single stop can be served by several
+  /// routes, each its own row.
+  Future<List<dynamic>> busEstimatedArrivals({
+    required String tdxCity,
+    required List<String> stopUids,
+    int top = 100,
+  }) {
+    assert(stopUids.isNotEmpty);
+    final filter = stopUids.map((id) => "StopUID eq '$id'").join(' or ');
+    return _get('/v2/Bus/EstimatedTimeOfArrival/City/$tdxCity', {
+      r'$filter': filter,
+      r'$top': '$top',
+    });
+  }
+
+  /// Upcoming departures at one TRA station. `stationId` is the bare
+  /// numeric `StationID` (e.g. `"1000"`), not the `TRA-1000`-style
+  /// `StationUID` [nearbyTraStations] returns as `id`.
+  Future<List<dynamic>> traLiveBoard({
+    required String stationId,
+    int top = 20,
+  }) => _get('/v2/Rail/TRA/LiveBoard/Station/$stationId', {r'$top': '$top'});
 }

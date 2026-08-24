@@ -106,7 +106,46 @@ void main() {
     expect(res['body']['data'][0]['id'], 'TRA-1');
     expect(res['body']['data'][0]['mode'], 'tra');
     expect(res['body']['data'][0]['distanceMeters'], 12);
+    expect(res['body']['data'][0]['arrivals'], isEmpty);
   });
+
+  test(
+    'serialises arrivals, omitting delayMinutes when null or zero',
+    () async {
+      final controller = TransitController(
+        service: _StubTransitService(
+          result: TransitResult(
+            stops: [
+              const TransitStop(
+                id: 'BUS-1',
+                name: '測試站牌',
+                mode: TransitMode.bus,
+                lat: 25.05,
+                lng: 121.5,
+                distanceMeters: 42,
+                arrivals: [
+                  TransitArrival(label: '299', minutesUntil: 6),
+                  TransitArrival(
+                    label: '111',
+                    minutesUntil: 3,
+                    delayMinutes: 2,
+                  ),
+                ],
+              ),
+            ],
+            partial: false,
+          ),
+        ),
+      );
+
+      final res = await get(controller, '/transit/nearby?lat=25.05&lng=121.5');
+
+      final arrivals = res['body']['data'][0]['arrivals'] as List<dynamic>;
+      expect(arrivals, hasLength(2));
+      expect(arrivals[0], {'label': '299', 'minutes': 6});
+      expect(arrivals[1], {'label': '111', 'minutes': 3, 'delayMinutes': 2});
+    },
+  );
 
   test('a service failure degrades to 503 rather than 500', () async {
     final controller = TransitController(

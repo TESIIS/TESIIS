@@ -96,9 +96,114 @@ class TransitService {
         if (r != null) ...r,
     ]..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
-    return TransitResult(
-      stops: stops.take(limit).toList(),
-      partial: failures > 0,
-    );
+    final truncated = stops.take(limit).toList();
+    final withArrivals = await _attachArrivals(truncated, tdxCity: tdxCity);
+
+    return TransitResult(stops: withArrivals, partial: failures > 0);
+  }
+
+  /// Fetches real-time arrivals only for the stops that made the final,
+  /// truncated list — not every candidate before truncation, which would
+  /// waste calls on stops the caller will never see.
+  ///
+  /// Deliberately not part of the failure/[TransitResult.partial] accounting
+  /// above: real-time arrivals are an enrichment on top of a stop that
+  /// already resolved successfully, not a source the caller asked for and
+  /// didn't get. A stop simply keeps its default empty [TransitStop.arrivals]
+  /// when this fails.
+  static const _maxArrivalsPerStop = 3;
+
+  Future<List<TransitStop>> _attachArrivals(
+    List<TransitStop> stops, {
+    required String? tdxCity,
+  }) async {
+    // A merged bus stop (see TdxTransitMapper._dedupeBusStops) covers
+    // several raw StopUIDs — one different route each — so every one of
+    // them has to go into the query, not just the display id.
+    final busStopIds = [
+      for (final s in stops)
+        if (s.mode == TransitMode.bus) ...(s.busStopUids ?? [s.id]),
+    ];
+    final traStationIds = [
+      for (final s in stops)
+        if (s.mode == TransitMode.tra && s.stationId != null) s.stationId!,
+    ];
+
+    final busArrivalsFuture = busStopIds.isEmpty || tdxCity == null
+        ? Future.value(const <String, List<TransitArrival>>{})
+        : _client
+              .busEstimatedArrivals(tdxCity: tdxCity, stopUids: busStopIds)
+              .then(TdxTransitMapper.busArrivalsByStop)
+              .catchError((_) => const <String, List<TransitArrival>>{});
+
+    final traArrivalsFutures = {
+      for (final stationId in traStationIds)
+        stationId: _client
+            .traLiveBoard(stationId: stationId)
+            .then(TdxTransitMapper.traArrivals)
+            .catchError((_) => const <TransitArrival>[]),
+    };
+
+    final busArrivalsByUid = await busArrivalsFuture;
+    final traArrivals = <String, List<TransitArrival>>{
+      for (final entry in traArrivalsFutures.entries)
+        entry.key: await entry.value,
+    };
+
+    return [
+      for (final s in stops)
+        switch (s.mode) {
+          TransitMode.bus => TransitStop(
+            id: s.id,
+            name: s.name,
+            mode: s.mode,
+            lat: s.lat,
+            lng: s.lng,
+            distanceMeters: s.distanceMeters,
+            stationId: s.stationId,
+            busStopUids: s.busStopUids,
+            arrivals: _mergeBusArrivals(
+              s.busStopUids ?? [s.id],
+              busArrivalsByUid,
+            ),
+          ),
+          TransitMode.tra when traArrivals[s.stationId] != null => TransitStop(
+            id: s.id,
+            name: s.name,
+            mode: s.mode,
+            lat: s.lat,
+            lng: s.lng,
+            distanceMeters: s.distanceMeters,
+            stationId: s.stationId,
+            arrivals: traArrivals[s.stationId]!,
+          ),
+          _ => s,
+        },
+    ];
+  }
+
+  /// A merged bus stop's underlying `StopUID`s each cover a different
+  /// route, so their arrivals need combining rather than picking one. Kept
+  /// unique per route label — the same route can legitimately appear under
+  /// more than one underlying `StopUID` (a loop route serving the same pole
+  /// twice, say), and the soonest instance is the useful one to show.
+  static List<TransitArrival> _mergeBusArrivals(
+    List<String> stopUids,
+    Map<String, List<TransitArrival>> byUid,
+  ) {
+    final byLabel = <String, TransitArrival>{};
+    for (final uid in stopUids) {
+      for (final arrival in byUid[uid] ?? const []) {
+        final existing = byLabel[arrival.label];
+        if (existing == null || arrival.minutesUntil < existing.minutesUntil) {
+          byLabel[arrival.label] = arrival;
+        }
+      }
+    }
+    final merged = byLabel.values.toList()
+      ..sort((a, b) => a.minutesUntil.compareTo(b.minutesUntil));
+    return merged.length > _maxArrivalsPerStop
+        ? merged.sublist(0, _maxArrivalsPerStop)
+        : merged;
   }
 }

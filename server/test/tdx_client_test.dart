@@ -109,6 +109,30 @@ void main() {
     expect(dataCalls, 1);
   });
 
+  test(
+    r'busEstimatedArrivals ORs multiple stop UIDs into one $filter',
+    () async {
+      String? capturedQuery;
+      final client = TdxClient(
+        client: MockClient((request) async {
+          if (request.url.path.contains('openid-connect/token')) {
+            return http.Response(_tokenBody(), 200);
+          }
+          capturedQuery = request.url.query;
+          return http.Response(jsonEncode([]), 200);
+        }),
+      );
+
+      await client.busEstimatedArrivals(
+        tdxCity: 'Taipei',
+        stopUids: ['TPE1', 'TPE2'],
+      );
+
+      final decodedQuery = Uri.decodeQueryComponent(capturedQuery!);
+      expect(decodedQuery, contains("StopUID eq 'TPE1' or StopUID eq 'TPE2'"));
+    },
+  );
+
   test('missing credentials fails without any network call', () async {
     Env.loadFromLines(const []);
     var networkCalls = 0;

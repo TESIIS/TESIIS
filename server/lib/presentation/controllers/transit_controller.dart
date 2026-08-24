@@ -59,6 +59,14 @@ class TransitController {
     'lat': s.lat,
     'lng': s.lng,
     'distanceMeters': s.distanceMeters.round(),
+    'arrivals': [
+      for (final a in s.arrivals)
+        {
+          'label': a.label,
+          'minutes': a.minutesUntil,
+          if (a.delayMinutes != null) 'delayMinutes': a.delayMinutes,
+        },
+    ],
   };
 
   Future<Response> _getNearbyTransit(Request request) async {
