@@ -130,6 +130,22 @@ test.describe('shelter web smoke', () => {
     });
   });
 
+  test('台貓署名會開啟個人網站', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    await page.goto('/');
+    await enableSemantics(page);
+    await page.getByRole('button', { name: '關於我們' }).click();
+    const twcatLink = page.getByRole('button', { name: /^台貓/ });
+    await expect(twcatLink).toBeVisible();
+
+    const popupPromise = page.waitForEvent('popup');
+    await twcatLink.click();
+    const popup = await popupPromise;
+    await expect(popup).toHaveURL(/^https:\/\/twcat0503\.org\/?/);
+    await popup.close();
+  });
+
   test('the county picker surfaces nationwide coverage', async ({ request, baseURL }) => {
     const res = await request.get(`${baseURL}/api/regions`);
     const body = await res.json();

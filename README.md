@@ -187,12 +187,12 @@ bundle 或版本控制。
 # 後端
 cd server
 dart analyze                      # 應為 0 issues
-dart test                         # 應為 190 passed
+dart test                         # 應全部通過
 
 # 前端
 cd flutter_codefest
 flutter analyze                   # 應為 0 issues
-flutter test                      # 應為 74 passed
+flutter test                      # 應全部通過
 ```
 
 GitHub Actions 會執行後端與 Flutter 的靜態分析、格式檢查、測試、Web 建置、Docker Compose 建置、Playwright 端對端測試，以及 Git 歷史的機密掃描。master 通過後另外建置 `linux/amd64` + `linux/arm64` 多架構映像並推送到 [GHCR](https://github.com/orgs/TESIIS/packages)（`ghcr.io/tesiis/server`、`ghcr.io/tesiis/web`），部署時直接 `docker pull` 使用。完整設定見 [ci.yml](.github/workflows/ci.yml)。
@@ -228,7 +228,7 @@ docker compose down
 
 2025 臺北程式設計節城市通微服務大黑客松 - 團隊 30「喵主餓餓女裝」
 
-- twcat0503（[@twcat0503](https://github.com/Twcat0503)）
+- twcat0503（[個人網站](https://twcat0503.org) · [@twcat0503](https://github.com/Twcat0503)）
 - 南宮柳信（[@nangong5421](https://github.com/nangong5421)）
 - 伊藤蒼太（[@itousouta15](https://github.com/itousouta15)）
 - Z（[@yuzen9622](https://github.com/yuzen9622)）
