@@ -77,6 +77,7 @@ class _DataQualityPageState extends State<DataQualityPage> {
           cities: _viewModel.cities,
           selectedCity: _viewModel.selectedCity,
           onSelect: _viewModel.selectCity,
+          compact: !isDesktop,
         ),
         Expanded(
           child: townships.isEmpty
@@ -126,11 +127,13 @@ class _CityFilterBar extends StatelessWidget {
     required this.cities,
     required this.selectedCity,
     required this.onSelect,
+    required this.compact,
   });
 
   final List<String> cities;
   final String? selectedCity;
   final ValueChanged<String?> onSelect;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -138,25 +141,43 @@ class _CityFilterBar extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: compact
+          ? const EdgeInsets.fromLTRB(16, 10, 16, 10)
+          : const EdgeInsets.fromLTRB(16, 12, 16, 4),
       color: colorScheme.surface,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          ChoiceChip(
-            label: const Text('全部'),
-            selected: selectedCity == null,
-            onSelected: (_) => onSelect(null),
-          ),
-          for (final city in cities)
-            ChoiceChip(
-              label: Text(city),
-              selected: selectedCity == city,
-              onSelected: (_) => onSelect(selectedCity == city ? null : city),
+      child: compact
+          ? DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: selectedCity ?? '',
+                isExpanded: true,
+                icon: const Icon(Icons.expand_more),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('全部縣市')),
+                  for (final city in cities)
+                    DropdownMenuItem(value: city, child: Text(city)),
+                ],
+                onChanged: (value) =>
+                    onSelect(value == null || value.isEmpty ? null : value),
+              ),
+            )
+          : Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('全部'),
+                  selected: selectedCity == null,
+                  onSelected: (_) => onSelect(null),
+                ),
+                for (final city in cities)
+                  ChoiceChip(
+                    label: Text(city),
+                    selected: selectedCity == city,
+                    onSelected: (_) =>
+                        onSelect(selectedCity == city ? null : city),
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
 }
