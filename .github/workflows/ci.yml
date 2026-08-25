@@ -132,7 +132,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           platforms: ${{ matrix.platform }}
-          build-args: ${{ matrix.build-args }}
+          build-args: |
+            ${{ matrix.build-args }}
+            BUILD_SHA=${{ github.sha }}
           outputs: type=image,name=ghcr.io/tesiis/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest

@@ -30,6 +30,11 @@ jobs:
     name: check production /healthz
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 1
+
       - name: Query /healthz and evaluate
         env:
           PROD_URL: ${{ vars.PROD_URL || 'https://tesiis.itousouta.me' }}
@@ -90,3 +95,23 @@ jobs:
           dataUpdatedAt=$(jq -r '.dataUpdatedAt' "$body"), \
           snapshotUpdatedAt=$(jq -r '.snapshotUpdatedAt' "$body")"
           echo "All checks passed."
+
+      - name: Confirm deployed frontend version
+        env:
+          PROD_URL: ${{ vars.PROD_URL || 'https://tesiis.itousouta.me' }}
+        run: |
+          set -euo pipefail
+
+          deployed_sha=$(curl --fail --silent --show-error --max-time 10 \
+            --header 'Cache-Control: no-cache' "$PROD_URL/build-info.json" \
+            | jq -r '.sha')
+          expected_sha=$(git rev-parse HEAD)
+
+          echo "deployed=$deployed_sha"
+          echo "expected=$expected_sha"
+          if [ "$deployed_sha" != "$expected_sha" ]; then
+            echo "::error::Frontend deployment is behind master"
+            exit 1
+          fi
+
+          echo "Frontend deployment matches master."

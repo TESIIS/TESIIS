@@ -3,6 +3,7 @@
 FROM ghcr.io/cirruslabs/flutter:stable@sha256:46691e311715845de03a3ba4753a475476936805b29431b1f00f1816981033f8 AS build
 
 ARG API_BASE_URL=/api
+ARG BUILD_SHA=local
 
 WORKDIR /app
 
@@ -14,7 +15,8 @@ COPY assets ./assets
 COPY web ./web
 
 RUN flutter build web --release \
-    --dart-define=API_BASE_URL=${API_BASE_URL}
+    --dart-define=API_BASE_URL=${API_BASE_URL} && \
+    printf '{"sha":"%s"}\n' "${BUILD_SHA}" > /app/build/web/build-info.json
 
 FROM nginx:1.29-alpine AS runtime
 
