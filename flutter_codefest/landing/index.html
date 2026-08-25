@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TESIIS 臺灣避難收容所地圖</title>
+<meta name="description" content="TESIIS 用地圖快速查詢全臺避難收容處所，查看最近設施、座標可信度，並可直接交給手機地圖 App 導航。整合內政部消防署全臺 22 縣市官方資料，開放原始碼、不需登入。" />
+<meta name="theme-color" content="#161c27" />
+<meta property="og:title" content="TESIIS 臺灣避難收容所地圖" />
+<meta property="og:description" content="用地圖快速查詢全臺避難收容處所，緊急時刻不再茫然。" />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/png" href="assets/logo.png" />
+<link rel="apple-touch-icon" href="assets/logo.png" />
+<style>
+  :root {
+    /* One tone for every dark band — header, hero, closing CTA, footer. They
+       used to be three near-identical navies, which read as sloppy rather
+       than as separate sections. */
+    --band: #161c27;
+    /* Hairline between two dark bands that meet (footer under the CTA). Always
+       visible, because both sides are dark in either colour scheme. */
+    --band-line: rgba(255, 255, 255, .09);
+    /* Edge where a dark band meets the page ground. In light mode the colour
+       change already separates them, so this stays invisible; in dark mode the
+       band and the ground are the same tone and it does the whole job. */
+    --band-edge: transparent;
+
+    --red: #e5484d;
+    --red-hover: #cf3c41;
+    --amber: #f5c451;
+    /* "good state" accent: the live dot and the coordinate-quality tag. The
+       tag needs a darker shade to clear contrast on a white card. */
+    --green: #4ade80;
+    --green-ink: #16955c;
+
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-alt: #f1f3f7;
+    --border: #e4e8ef;
+    --text: #171d29;
+    --muted: #5c6675;
+
+    --r-md: 16px;
+    --r-pill: 999px;
+
+    --shadow-sm: 0 1px 2px rgba(18, 23, 31, .06), 0 4px 12px rgba(18, 23, 31, .05);
+    --shadow-md: 0 2px 4px rgba(18, 23, 31, .06), 0 12px 32px rgba(18, 23, 31, .08);
+    --shadow-lg: 0 24px 60px rgba(18, 23, 31, .18);
+
+    --maxw: 1120px;
+    --pad: 24px;
+
+    --font: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
+      "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1319;
+      /* The bands collapse into the page ground here. Keeping the navy would
+         leave the hero and footer sitting *lighter* than the page between
+         them, so scrolling read as a series of unrelated slabs. */
+      --band: #0f1319;
+      --band-edge: rgba(255, 255, 255, .07);
+
+      --surface: #171d26;
+      --surface-alt: #1b222c;
+      --border: #262e3b;
+      --text: #e8ecf3;
+      --muted: #99a3b3;
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 12px rgba(0, 0, 0, .25);
+      --shadow-md: 0 2px 4px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
+      --shadow-lg: 0 24px 60px rgba(0, 0, 0, .5);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  img, svg { display: block; max-width: 100%; }
+  a { color: inherit; text-decoration: none; }
+
+  h1, h2, h3 {
+    line-height: 1.3;
+    letter-spacing: -0.015em;
+    margin: 0;
+    font-weight: 800;
+  }
+
+  p { margin: 0; }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      "Liberation Mono", monospace;
+    font-size: .88em;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  ::selection { background: rgba(229, 72, 77, .22); }
+
+  :focus-visible {
+    outline: 2px solid var(--red);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding-inline: var(--pad);
+  }
+
+  /* ---------- Buttons ---------- */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: var(--r-pill);
+    font-weight: 700;
+    font-size: .95rem;
+    line-height: 1.2;
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color .18s ease, border-color .18s ease,
+      transform .18s ease, box-shadow .18s ease, color .18s ease;
+  }
+
+  .btn-primary {
+    background: var(--red);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(229, 72, 77, .3), 0 8px 24px rgba(229, 72, 77, .32);
+  }
+  .btn-primary:hover {
+    background: var(--red-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(229, 72, 77, .3), 0 14px 32px rgba(229, 72, 77, .4);
+  }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-onnavy {
+    background: rgba(255, 255, 255, .07);
+    color: #fff;
+    border-color: rgba(255, 255, 255, .22);
+    backdrop-filter: blur(6px);
+  }
+  .btn-onnavy:hover {
+    background: rgba(255, 255, 255, .13);
+    border-color: rgba(255, 255, 255, .42);
+    transform: translateY(-2px);
+  }
+
+  .btn-quiet {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-quiet:hover {
+    border-color: var(--muted);
+    transform: translateY(-2px);
+  }
+
+  .btn-sm { padding: 9px 18px; font-size: .875rem; }
+
+  /* ---------- Header ---------- */
+
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--band);
+    border-bottom: 1px solid var(--band-edge);
+  }
+
+  .site-header .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    height: 68px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.06rem;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .brand img {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    /* The mark's own ground is the same navy as the header, so without a rim
+       it dissolves into the bar and reads as a smudge. */
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14),
+      0 2px 8px rgba(0, 0, 0, .35);
+  }
+  .brand .brand-sub {
+    font-weight: 500;
+    font-size: .82rem;
+    color: rgba(255, 255, 255, .55);
+    letter-spacing: 0;
+    padding-left: 11px;
+    margin-left: 1px;
+    border-left: 1px solid rgba(255, 255, 255, .16);
+  }
+
+  .site-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .site-nav .navlink {
+    color: rgba(255, 255, 255, .7);
+    font-size: .9rem;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: var(--r-pill);
+    transition: color .18s ease, background-color .18s ease;
+  }
+  .site-nav .navlink:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, .08);
+  }
+  .site-nav .btn { margin-left: 8px; }
+
+  /* ---------- Hero ---------- */
+
+  .hero {
+    position: relative;
+    background: var(--band);
+    color: #fff;
+    overflow: hidden;
+    isolation: isolate;
+    border-bottom: 1px solid var(--band-edge);
+  }
+
+  .hero::before,
+  .hero::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  /* warm glow behind the map */
+  .hero::before {
+    width: 780px;
+    height: 780px;
+    top: -240px;
+    right: -180px;
+    background: radial-gradient(circle, rgba(229, 72, 77, .20), transparent 62%);
+  }
+  /* cool lift on the copy side */
+  .hero::after {
+    width: 640px;
+    height: 640px;
+    bottom: -320px;
+    left: -220px;
+    background: radial-gradient(circle, rgba(96, 140, 200, .16), transparent 65%);
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+    gap: 56px;
+    align-items: center;
+    padding: 80px 0 72px;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 16px 7px 10px;
+    border-radius: var(--r-pill);
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid rgba(255, 255, 255, .14);
+    font-size: .82rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, .88);
+    letter-spacing: .01em;
+  }
+  .pill .live {
+    position: relative;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    flex: none;
+    margin-left: 4px;
+  }
+  .pill .live::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1px solid var(--green);
+    opacity: .6;
+    animation: ripple 2.4s ease-out infinite;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.1rem, 5.2vw, 3.4rem);
+    line-height: 1.24;
+    margin: 24px 0 0;
+    letter-spacing: -0.025em;
+  }
+  .hero h1 .accent {
+    color: var(--red);
+    /* keeps the highlighted line readable against the dark ground */
+    text-shadow: 0 0 40px rgba(229, 72, 77, .5);
+  }
+
+  .hero .lead {
+    margin-top: 22px;
+    font-size: 1.06rem;
+    line-height: 1.85;
+    color: rgba(255, 255, 255, .68);
+    max-width: 44ch;
+  }
+
+  .hero-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 36px;
+  }
+
+  .hero-note {
+    margin-top: 22px;
+    font-size: .84rem;
+    color: rgba(255, 255, 255, .42);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hero-note svg { width: 15px; height: 15px; flex: none; }
+
+  /* ---------- Hero map art ---------- */
+
+  .map-art {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .map-art .halo {
+    position: absolute;
+    width: 108%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(229, 72, 77, .14), transparent 60%);
+    pointer-events: none;
+  }
+
+  .taiwan {
+    position: relative;
+    height: clamp(330px, 44vw, 520px);
+    width: auto;
+    overflow: visible;
+  }
+
+  /* The land dots are filled by the gradient referenced in the markup. Do not
+     set `fill` here — a CSS declaration would beat the presentation attribute
+     and flatten the gradient back to a single tone. */
+
+  /* `r` stays an attribute on each circle — it is a geometry attribute, and
+     support for it as a CSS property is too recent to rely on here. */
+  .taiwan .pin-dot { fill: var(--red); }
+  .taiwan .pin-ring {
+    fill: none;
+    stroke: var(--red);
+    stroke-width: 1.6;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pulse 3.2s cubic-bezier(.2, .6, .3, 1) infinite;
+  }
+  .taiwan .pin:nth-child(2) .pin-ring { animation-delay: .5s; }
+  .taiwan .pin:nth-child(3) .pin-ring { animation-delay: 1.05s; }
+  .taiwan .pin:nth-child(4) .pin-ring { animation-delay: 1.6s; }
+  .taiwan .pin:nth-child(5) .pin-ring { animation-delay: 2.1s; }
+  .taiwan .pin:nth-child(6) .pin-ring { animation-delay: 2.65s; }
+
+  @keyframes pulse {
+    0%   { transform: scale(.35); opacity: 0; }
+    16%  { opacity: .85; }
+    100% { transform: scale(3.4); opacity: 0; }
+  }
+
+  @keyframes ripple {
+    0%   { transform: scale(.7); opacity: .7; }
+    100% { transform: scale(2.1); opacity: 0; }
+  }
+
+  /* floating result card */
+  .result-card {
+    position: absolute;
+    left: -6px;
+    bottom: 6%;
+    width: min(290px, 82%);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: var(--r-md);
+    padding: 14px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .result-card .mark {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: rgba(229, 72, 77, .12);
+    color: var(--red);
+    display: grid;
+    place-items: center;
+  }
+  .result-card .mark svg { width: 19px; height: 19px; }
+  .result-card .name {
+    font-weight: 700;
+    font-size: .93rem;
+    line-height: 1.45;
+  }
+  .result-card .meta {
+    margin-top: 3px;
+    font-size: .79rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .result-card .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 3px 9px;
+    border-radius: var(--r-pill);
+    background: rgba(74, 222, 128, .14);
+    color: var(--green-ink);
+    font-size: .72rem;
+    font-weight: 700;
+  }
+  @media (prefers-color-scheme: dark) {
+    .result-card .tag { color: var(--green); }
+  }
+
+  /* ---------- Stat band ---------- */
+
+  .stats {
+    border-top: 1px solid rgba(255, 255, 255, .1);
+  }
+  .stats .wrap {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+  /* Dividers come from each cell's own left border rather than a grid gap
+     with a background showing through, so the band keeps the page's normal
+     side padding instead of running to the viewport edge on narrow screens. */
+  .stats .stat {
+    padding: 30px 26px;
+    border-left: 1px solid rgba(255, 255, 255, .1);
+  }
+  .stats .stat:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .stats .stat b {
+    display: block;
+    font-size: clamp(1.6rem, 3vw, 2.1rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+  .stats .stat span {
+    display: block;
+    margin-top: 5px;
+    font-size: .84rem;
+    color: rgba(255, 255, 255, .5);
+  }
+
+  /* ---------- Sections ---------- */
+
+  /* Every section between the hero and the closing CTA sits on the same page
+     ground. Section rhythm comes from spacing and the cards, not from
+     alternating tints. */
+  section.band { padding: 96px 0; }
+
+  .sec-head {
+    max-width: 640px;
+    margin: 0 auto 56px;
+    text-align: center;
+  }
+  .sec-head .kicker {
+    display: inline-block;
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .14em;
+    color: var(--red);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .sec-head h2 { font-size: clamp(1.6rem, 3.6vw, 2.3rem); }
+  .sec-head p {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 1.02rem;
+  }
+
+  /* ---------- Feature cards ---------- */
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 28px 26px 30px;
+    box-shadow: var(--shadow-sm);
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+    border-color: transparent;
+  }
+  .card .ico {
+    width: 46px;
+    height: 46px;
+    border-radius: 13px;
+    background: rgba(229, 72, 77, .1);
+    color: var(--red);
+    display: grid;
+    place-items: center;
+    margin-bottom: 20px;
+  }
+  .card .ico svg { width: 22px; height: 22px; }
+  .card h3 { font-size: 1.05rem; font-weight: 700; }
+  .card p {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: .93rem;
+    line-height: 1.8;
+  }
+
+  /* ---------- Steps ---------- */
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    counter-reset: step;
+  }
+  .step {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 30px 26px;
+    box-shadow: var(--shadow-sm);
+  }
+  .step .num {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--band);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 18px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .step .num { background: var(--red); }
+  }
+  .step h3 { font-size: 1.02rem; font-weight: 700; }
+  .step p {
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: .93rem;
+    line-height: 1.8;
+  }
+  /* connector line between steps on wide screens */
+  .step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50px;
+    right: -20px;
+    width: 20px;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ---------- Notice ---------- */
+
+  .notice {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    max-width: 860px;
+    margin-inline: auto;
+    padding: 28px 30px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--amber);
+    box-shadow: var(--shadow-sm);
+  }
+  .notice .ico {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(245, 196, 81, .18);
+    color: #a97a09;
+    display: grid;
+    place-items: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    .notice .ico { color: var(--amber); }
+  }
+  .notice .ico svg { width: 21px; height: 21px; }
+  .notice h3 { font-size: 1.04rem; font-weight: 700; }
+  .notice p {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: .94rem;
+    line-height: 1.8;
+  }
+
+  /* ---------- Final CTA ---------- */
+
+  .cta {
+    position: relative;
+    background: var(--band);
+    color: #fff;
+    overflow: hidden;
+    isolation: isolate;
+    border-top: 1px solid var(--band-edge);
+  }
+  .cta::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: 50%;
+    bottom: -60%;
+    translate: -50% 0;
+    width: min(900px, 140%);
+    height: 560px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(229, 72, 77, .26), transparent 62%);
+  }
+  .cta .wrap {
+    padding: 92px var(--pad);
+    text-align: center;
+  }
+  .cta h2 {
+    font-size: clamp(1.7rem, 4vw, 2.5rem);
+    max-width: 20ch;
+    margin-inline: auto;
+  }
+  .cta p {
+    margin-top: 18px;
+    color: rgba(255, 255, 255, .64);
+    font-size: 1.04rem;
+    max-width: 48ch;
+    margin-inline: auto;
+  }
+  .cta .row {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 34px;
+  }
+
+  /* ---------- Footer ---------- */
+
+  .site-footer {
+    background: var(--band);
+    /* The CTA above is the same tone in both schemes, so this edge is the only
+       thing marking where the footer starts. */
+    border-top: 1px solid var(--band-line);
+    color: rgba(255, 255, 255, .62);
+    padding: 56px 0 40px;
+    font-size: .9rem;
+  }
+  .footer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 32px;
+    padding-bottom: 30px;
+    border-bottom: 1px solid rgba(255, 255, 255, .09);
+  }
+  .footer-top .about {
+    max-width: 34ch;
+    margin-top: 14px;
+    color: rgba(255, 255, 255, .45);
+    font-size: .86rem;
+    line-height: 1.75;
+  }
+  .footer-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, auto));
+    gap: 10px 48px;
+  }
+  .footer-links a {
+    color: rgba(255, 255, 255, .62);
+    transition: color .18s ease;
+  }
+  .footer-links a:hover { color: #fff; }
+  .footer-bottom {
+    margin-top: 26px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: .82rem;
+    color: rgba(255, 255, 255, .38);
+    line-height: 1.7;
+  }
+
+  /* ---------- Responsive ---------- */
+
+  @media (max-width: 940px) {
+    .hero-grid {
+      grid-template-columns: 1fr;
+      gap: 48px;
+      padding: 60px 0 64px;
+      text-align: center;
+    }
+    .hero .lead { margin-inline: auto; }
+    .hero-cta, .hero-note { justify-content: center; }
+    /* The map stays *below* the copy in one column. Floating it above pushed
+       the headline off a 390x844 screen entirely, so the first thing a phone
+       showed was decoration rather than what the site is for. */
+    .map-art { margin-top: 8px; }
+    /* .hero clips its overflow, so the card has to stay inside the art box */
+    .result-card { left: 50%; translate: -50% 0; bottom: 2%; text-align: left; }
+    .cards, .steps { grid-template-columns: repeat(2, 1fr); }
+    .step:not(:last-child)::after { display: none; }
+    .site-nav .navlink { display: none; }
+    section.band { padding: 72px 0; }
+  }
+
+  @media (max-width: 620px) {
+    :root { --pad: 20px; }
+    .cards, .steps { grid-template-columns: 1fr; }
+    .stats .wrap { grid-template-columns: repeat(2, 1fr); }
+    /* Two columns: the left cell of each row starts the row, and the second
+       row needs a rule above it that the 4-across layout never had. */
+    .stats .stat { padding: 24px 20px; }
+    .stats .stat:nth-child(odd) { border-left: 0; padding-left: 0; }
+    .stats .stat:nth-child(n + 3) { border-top: 1px solid rgba(255, 255, 255, .1); }
+    .brand .brand-sub { display: none; }
+    .notice { flex-direction: column; gap: 16px; padding: 24px; }
+    .cta .wrap { padding: 68px var(--pad); }
+    .footer-links { grid-template-columns: 1fr; }
+    .hero-cta .btn { flex: 1 1 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <img src="assets/logo.png" alt="" width="34" height="34" />
+      <span>TESIIS</span>
+      <span class="brand-sub">臺灣避難收容所地圖</span>
+    </a>
+    <nav class="site-nav" aria-label="主選單">
+      <a class="navlink" href="#features">功能</a>
+      <a class="navlink" href="#how">怎麼用</a>
+      <a class="navlink" href="#data">資料來源</a>
+      <a class="btn btn-primary btn-sm" href="/app/">進入服務</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ---------- Hero ---------- -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+
+        <h1>
+          災難來的時候<br />
+          <span class="accent">避難所在哪裡？</span>
+        </h1>
+
+        <p class="lead">
+          TESIIS 把內政部消防署的全臺避難收容處所搬上地圖。開啟就能查，定位後馬上列出最近的設施，選定後一鍵交給手機地圖導航。不必註冊、不必安裝。
+        </p>
+
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="/app/">
+            立即查看地圖
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn-onnavy" href="https://github.com/TESIIS/TESIIS" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="17" height="17" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.54-3.88-1.54-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+            原始碼
+          </a>
+        </div>
+
+        <p class="hero-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          不需登入、不蒐集個人資料，定位只留在你的裝置上
+        </p>
+      </div>
+
+      <div class="map-art">
+        <span class="halo" aria-hidden="true"></span>
+        <svg class="taiwan" viewBox="-14 -14 238 420" role="img" aria-label="臺灣本島地圖，標示各地避難收容處所分布">
+          <defs>
+            <!-- userSpaceOnUse, not the default objectBoundingBox: the bounding
+                 box of a gradient fill is the individual circle's, so the
+                 default would paint all 532 dots identically. -->
+            <linearGradient id="tw-land" gradientUnits="userSpaceOnUse"
+                            x1="0" y1="392" x2="210" y2="0">
+              <stop offset="0" stop-color="#fff" stop-opacity=".2" />
+              <stop offset="1" stop-color="#fff" stop-opacity=".46" />
+            </linearGradient>
+          </defs>
+          <g class="land" fill="url(#tw-land)"><circle cx="148.5" cy="11.8" r="3.4"/><circle cx="157.5" cy="11.8" r="3.4"/><circle cx="166.5" cy="11.8" r="3.4"/><circle cx="135" cy="19.6" r="3.4"/><circle cx="144" cy="19.6" r="3.4"/><circle cx="153" cy="19.6" r="3.4"/><circle cx="162" cy="19.6" r="3.4"/><circle cx="171" cy="19.6" r="3.4"/><circle cx="180" cy="19.6" r="3.4"/><circle cx="130.5" cy="27.4" r="3.4"/><circle cx="139.5" cy="27.4" r="3.4"/><circle cx="148.5" cy="27.4" r="3.4"/><circle cx="157.5" cy="27.4" r="3.4"/><circle cx="166.5" cy="27.4" r="3.4"/><circle cx="175.5" cy="27.4" r="3.4"/><circle cx="184.5" cy="27.4" r="3.4"/><circle cx="117" cy="35.2" r="3.4"/><circle cx="126" cy="35.2" r="3.4"/><circle cx="135" cy="35.2" r="3.4"/><circle cx="144" cy="35.2" r="3.4"/><circle cx="153" cy="35.2" r="3.4"/><circle cx="162" cy="35.2" r="3.4"/><circle cx="171" cy="35.2" r="3.4"/><circle cx="180" cy="35.2" r="3.4"/><circle cx="189" cy="35.2" r="3.4"/><circle cx="103.5" cy="43" r="3.4"/><circle cx="112.5" cy="43" r="3.4"/><circle cx="121.5" cy="43" r="3.4"/><circle cx="130.5" cy="43" r="3.4"/><circle cx="139.5" cy="43" r="3.4"/><circle cx="148.5" cy="43" r="3.4"/><circle cx="157.5" cy="43" r="3.4"/><circle cx="166.5" cy="43" r="3.4"/><circle cx="175.5" cy="43" r="3.4"/><circle cx="184.5" cy="43" r="3.4"/><circle cx="193.5" cy="43" r="3.4"/><circle cx="99" cy="50.8" r="3.4"/><circle cx="108" cy="50.8" r="3.4"/><circle cx="117" cy="50.8" r="3.4"/><circle cx="126" cy="50.8" r="3.4"/><circle cx="135" cy="50.8" r="3.4"/><circle cx="144" cy="50.8" r="3.4"/><circle cx="153" cy="50.8" r="3.4"/><circle cx="162" cy="50.8" r="3.4"/><circle cx="171" cy="50.8" r="3.4"/><circle cx="180" cy="50.8" r="3.4"/><circle cx="189" cy="50.8" r="3.4"/><circle cx="94.5" cy="58.6" r="3.4"/><circle cx="103.5" cy="58.6" r="3.4"/><circle cx="112.5" cy="58.6" r="3.4"/><circle cx="121.5" cy="58.6" r="3.4"/><circle cx="130.5" cy="58.6" r="3.4"/><circle cx="139.5" cy="58.6" r="3.4"/><circle cx="148.5" cy="58.6" r="3.4"/><circle cx="157.5" cy="58.6" r="3.4"/><circle cx="166.5" cy="58.6" r="3.4"/><circle cx="175.5" cy="58.6" r="3.4"/><circle cx="184.5" cy="58.6" r="3.4"/><circle cx="90" cy="66.4" r="3.4"/><circle cx="99" cy="66.4" r="3.4"/><circle cx="108" cy="66.4" r="3.4"/><circle cx="117" cy="66.4" r="3.4"/><circle cx="126" cy="66.4" r="3.4"/><circle cx="135" cy="66.4" r="3.4"/><circle cx="144" cy="66.4" r="3.4"/><circle cx="153" cy="66.4" r="3.4"/><circle cx="162" cy="66.4" r="3.4"/><circle cx="171" cy="66.4" r="3.4"/><circle cx="180" cy="66.4" r="3.4"/><circle cx="189" cy="66.4" r="3.4"/><circle cx="85.5" cy="74.1" r="3.4"/><circle cx="94.5" cy="74.1" r="3.4"/><circle cx="103.5" cy="74.1" r="3.4"/><circle cx="112.5" cy="74.1" r="3.4"/><circle cx="121.5" cy="74.1" r="3.4"/><circle cx="130.5" cy="74.1" r="3.4"/><circle cx="139.5" cy="74.1" r="3.4"/><circle cx="148.5" cy="74.1" r="3.4"/><circle cx="157.5" cy="74.1" r="3.4"/><circle cx="166.5" cy="74.1" r="3.4"/><circle cx="175.5" cy="74.1" r="3.4"/><circle cx="184.5" cy="74.1" r="3.4"/><circle cx="81" cy="81.9" r="3.4"/><circle cx="90" cy="81.9" r="3.4"/><circle cx="99" cy="81.9" r="3.4"/><circle cx="108" cy="81.9" r="3.4"/><circle cx="117" cy="81.9" r="3.4"/><circle cx="126" cy="81.9" r="3.4"/><circle cx="135" cy="81.9" r="3.4"/><circle cx="144" cy="81.9" r="3.4"/><circle cx="153" cy="81.9" r="3.4"/><circle cx="162" cy="81.9" r="3.4"/><circle cx="171" cy="81.9" r="3.4"/><circle cx="180" cy="81.9" r="3.4"/><circle cx="76.5" cy="89.7" r="3.4"/><circle cx="85.5" cy="89.7" r="3.4"/><circle cx="94.5" cy="89.7" r="3.4"/><circle cx="103.5" cy="89.7" r="3.4"/><circle cx="112.5" cy="89.7" r="3.4"/><circle cx="121.5" cy="89.7" r="3.4"/><circle cx="130.5" cy="89.7" r="3.4"/><circle cx="139.5" cy="89.7" r="3.4"/><circle cx="148.5" cy="89.7" r="3.4"/><circle cx="157.5" cy="89.7" r="3.4"/><circle cx="166.5" cy="89.7" r="3.4"/><circle cx="175.5" cy="89.7" r="3.4"/><circle cx="184.5" cy="89.7" r="3.4"/><circle cx="72" cy="97.5" r="3.4"/><circle cx="81" cy="97.5" r="3.4"/><circle cx="90" cy="97.5" r="3.4"/><circle cx="99" cy="97.5" r="3.4"/><circle cx="108" cy="97.5" r="3.4"/><circle cx="117" cy="97.5" r="3.4"/><circle cx="126" cy="97.5" r="3.4"/><circle cx="135" cy="97.5" r="3.4"/><circle cx="144" cy="97.5" r="3.4"/><circle cx="153" cy="97.5" r="3.4"/><circle cx="162" cy="97.5" r="3.4"/><circle cx="171" cy="97.5" r="3.4"/><circle cx="180" cy="97.5" r="3.4"/><circle cx="67.5" cy="105.3" r="3.4"/><circle cx="76.5" cy="105.3" r="3.4"/><circle cx="85.5" cy="105.3" r="3.4"/><circle cx="94.5" cy="105.3" r="3.4"/><circle cx="103.5" cy="105.3" r="3.4"/><circle cx="112.5" cy="105.3" r="3.4"/><circle cx="121.5" cy="105.3" r="3.4"/><circle cx="130.5" cy="105.3" r="3.4"/><circle cx="139.5" cy="105.3" r="3.4"/><circle cx="148.5" cy="105.3" r="3.4"/><circle cx="157.5" cy="105.3" r="3.4"/><circle cx="166.5" cy="105.3" r="3.4"/><circle cx="175.5" cy="105.3" r="3.4"/><circle cx="54" cy="113.1" r="3.4"/><circle cx="63" cy="113.1" r="3.4"/><circle cx="72" cy="113.1" r="3.4"/><circle cx="81" cy="113.1" r="3.4"/><circle cx="90" cy="113.1" r="3.4"/><circle cx="99" cy="113.1" r="3.4"/><circle cx="108" cy="113.1" r="3.4"/><circle cx="117" cy="113.1" r="3.4"/><circle cx="126" cy="113.1" r="3.4"/><circle cx="135" cy="113.1" r="3.4"/><circle cx="144" cy="113.1" r="3.4"/><circle cx="153" cy="113.1" r="3.4"/><circle cx="162" cy="113.1" r="3.4"/><circle cx="171" cy="113.1" r="3.4"/><circle cx="180" cy="113.1" r="3.4"/><circle cx="49.5" cy="120.9" r="3.4"/><circle cx="58.5" cy="120.9" r="3.4"/><circle cx="67.5" cy="120.9" r="3.4"/><circle cx="76.5" cy="120.9" r="3.4"/><circle cx="85.5" cy="120.9" r="3.4"/><circle cx="94.5" cy="120.9" r="3.4"/><circle cx="103.5" cy="120.9" r="3.4"/><circle cx="112.5" cy="120.9" r="3.4"/><circle cx="121.5" cy="120.9" r="3.4"/><circle cx="130.5" cy="120.9" r="3.4"/><circle cx="139.5" cy="120.9" r="3.4"/><circle cx="148.5" cy="120.9" r="3.4"/><circle cx="157.5" cy="120.9" r="3.4"/><circle cx="166.5" cy="120.9" r="3.4"/><circle cx="175.5" cy="120.9" r="3.4"/><circle cx="45" cy="128.7" r="3.4"/><circle cx="54" cy="128.7" r="3.4"/><circle cx="63" cy="128.7" r="3.4"/><circle cx="72" cy="128.7" r="3.4"/><circle cx="81" cy="128.7" r="3.4"/><circle cx="90" cy="128.7" r="3.4"/><circle cx="99" cy="128.7" r="3.4"/><circle cx="108" cy="128.7" r="3.4"/><circle cx="117" cy="128.7" r="3.4"/><circle cx="126" cy="128.7" r="3.4"/><circle cx="135" cy="128.7" r="3.4"/><circle cx="144" cy="128.7" r="3.4"/><circle cx="153" cy="128.7" r="3.4"/><circle cx="162" cy="128.7" r="3.4"/><circle cx="171" cy="128.7" r="3.4"/><circle cx="40.5" cy="136.5" r="3.4"/><circle cx="49.5" cy="136.5" r="3.4"/><circle cx="58.5" cy="136.5" r="3.4"/><circle cx="67.5" cy="136.5" r="3.4"/><circle cx="76.5" cy="136.5" r="3.4"/><circle cx="85.5" cy="136.5" r="3.4"/><circle cx="94.5" cy="136.5" r="3.4"/><circle cx="103.5" cy="136.5" r="3.4"/><circle cx="112.5" cy="136.5" r="3.4"/><circle cx="121.5" cy="136.5" r="3.4"/><circle cx="130.5" cy="136.5" r="3.4"/><circle cx="139.5" cy="136.5" r="3.4"/><circle cx="148.5" cy="136.5" r="3.4"/><circle cx="157.5" cy="136.5" r="3.4"/><circle cx="166.5" cy="136.5" r="3.4"/><circle cx="175.5" cy="136.5" r="3.4"/><circle cx="36" cy="144.3" r="3.4"/><circle cx="45" cy="144.3" r="3.4"/><circle cx="54" cy="144.3" r="3.4"/><circle cx="63" cy="144.3" r="3.4"/><circle cx="72" cy="144.3" r="3.4"/><circle cx="81" cy="144.3" r="3.4"/><circle cx="90" cy="144.3" r="3.4"/><circle cx="99" cy="144.3" r="3.4"/><circle cx="108" cy="144.3" r="3.4"/><circle cx="117" cy="144.3" r="3.4"/><circle cx="126" cy="144.3" r="3.4"/><circle cx="135" cy="144.3" r="3.4"/><circle cx="144" cy="144.3" r="3.4"/><circle cx="153" cy="144.3" r="3.4"/><circle cx="162" cy="144.3" r="3.4"/><circle cx="171" cy="144.3" r="3.4"/><circle cx="31.5" cy="152.1" r="3.4"/><circle cx="40.5" cy="152.1" r="3.4"/><circle cx="49.5" cy="152.1" r="3.4"/><circle cx="58.5" cy="152.1" r="3.4"/><circle cx="67.5" cy="152.1" r="3.4"/><circle cx="76.5" cy="152.1" r="3.4"/><circle cx="85.5" cy="152.1" r="3.4"/><circle cx="94.5" cy="152.1" r="3.4"/><circle cx="103.5" cy="152.1" r="3.4"/><circle cx="112.5" cy="152.1" r="3.4"/><circle cx="121.5" cy="152.1" r="3.4"/><circle cx="130.5" cy="152.1" r="3.4"/><circle cx="139.5" cy="152.1" r="3.4"/><circle cx="148.5" cy="152.1" r="3.4"/><circle cx="157.5" cy="152.1" r="3.4"/><circle cx="166.5" cy="152.1" r="3.4"/><circle cx="27" cy="159.9" r="3.4"/><circle cx="36" cy="159.9" r="3.4"/><circle cx="45" cy="159.9" r="3.4"/><circle cx="54" cy="159.9" r="3.4"/><circle cx="63" cy="159.9" r="3.4"/><circle cx="72" cy="159.9" r="3.4"/><circle cx="81" cy="159.9" r="3.4"/><circle cx="90" cy="159.9" r="3.4"/><circle cx="99" cy="159.9" r="3.4"/><circle cx="108" cy="159.9" r="3.4"/><circle cx="117" cy="159.9" r="3.4"/><circle cx="126" cy="159.9" r="3.4"/><circle cx="135" cy="159.9" r="3.4"/><circle cx="144" cy="159.9" r="3.4"/><circle cx="153" cy="159.9" r="3.4"/><circle cx="162" cy="159.9" r="3.4"/><circle cx="22.5" cy="167.7" r="3.4"/><circle cx="31.5" cy="167.7" r="3.4"/><circle cx="40.5" cy="167.7" r="3.4"/><circle cx="49.5" cy="167.7" r="3.4"/><circle cx="58.5" cy="167.7" r="3.4"/><circle cx="67.5" cy="167.7" r="3.4"/><circle cx="76.5" cy="167.7" r="3.4"/><circle cx="85.5" cy="167.7" r="3.4"/><circle cx="94.5" cy="167.7" r="3.4"/><circle cx="103.5" cy="167.7" r="3.4"/><circle cx="112.5" cy="167.7" r="3.4"/><circle cx="121.5" cy="167.7" r="3.4"/><circle cx="130.5" cy="167.7" r="3.4"/><circle cx="139.5" cy="167.7" r="3.4"/><circle cx="148.5" cy="167.7" r="3.4"/><circle cx="157.5" cy="167.7" r="3.4"/><circle cx="166.5" cy="167.7" r="3.4"/><circle cx="27" cy="175.5" r="3.4"/><circle cx="36" cy="175.5" r="3.4"/><circle cx="45" cy="175.5" r="3.4"/><circle cx="54" cy="175.5" r="3.4"/><circle cx="63" cy="175.5" r="3.4"/><circle cx="72" cy="175.5" r="3.4"/><circle cx="81" cy="175.5" r="3.4"/><circle cx="90" cy="175.5" r="3.4"/><circle cx="99" cy="175.5" r="3.4"/><circle cx="108" cy="175.5" r="3.4"/><circle cx="117" cy="175.5" r="3.4"/><circle cx="126" cy="175.5" r="3.4"/><circle cx="135" cy="175.5" r="3.4"/><circle cx="144" cy="175.5" r="3.4"/><circle cx="153" cy="175.5" r="3.4"/><circle cx="162" cy="175.5" r="3.4"/><circle cx="22.5" cy="183.3" r="3.4"/><circle cx="31.5" cy="183.3" r="3.4"/><circle cx="40.5" cy="183.3" r="3.4"/><circle cx="49.5" cy="183.3" r="3.4"/><circle cx="58.5" cy="183.3" r="3.4"/><circle cx="67.5" cy="183.3" r="3.4"/><circle cx="76.5" cy="183.3" r="3.4"/><circle cx="85.5" cy="183.3" r="3.4"/><circle cx="94.5" cy="183.3" r="3.4"/><circle cx="103.5" cy="183.3" r="3.4"/><circle cx="112.5" cy="183.3" r="3.4"/><circle cx="121.5" cy="183.3" r="3.4"/><circle cx="130.5" cy="183.3" r="3.4"/><circle cx="139.5" cy="183.3" r="3.4"/><circle cx="148.5" cy="183.3" r="3.4"/><circle cx="157.5" cy="183.3" r="3.4"/><circle cx="18" cy="191.1" r="3.4"/><circle cx="27" cy="191.1" r="3.4"/><circle cx="36" cy="191.1" r="3.4"/><circle cx="45" cy="191.1" r="3.4"/><circle cx="54" cy="191.1" r="3.4"/><circle cx="63" cy="191.1" r="3.4"/><circle cx="72" cy="191.1" r="3.4"/><circle cx="81" cy="191.1" r="3.4"/><circle cx="90" cy="191.1" r="3.4"/><circle cx="99" cy="191.1" r="3.4"/><circle cx="108" cy="191.1" r="3.4"/><circle cx="117" cy="191.1" r="3.4"/><circle cx="126" cy="191.1" r="3.4"/><circle cx="135" cy="191.1" r="3.4"/><circle cx="144" cy="191.1" r="3.4"/><circle cx="153" cy="191.1" r="3.4"/><circle cx="13.5" cy="198.9" r="3.4"/><circle cx="22.5" cy="198.9" r="3.4"/><circle cx="31.5" cy="198.9" r="3.4"/><circle cx="40.5" cy="198.9" r="3.4"/><circle cx="49.5" cy="198.9" r="3.4"/><circle cx="58.5" cy="198.9" r="3.4"/><circle cx="67.5" cy="198.9" r="3.4"/><circle cx="76.5" cy="198.9" r="3.4"/><circle cx="85.5" cy="198.9" r="3.4"/><circle cx="94.5" cy="198.9" r="3.4"/><circle cx="103.5" cy="198.9" r="3.4"/><circle cx="112.5" cy="198.9" r="3.4"/><circle cx="121.5" cy="198.9" r="3.4"/><circle cx="130.5" cy="198.9" r="3.4"/><circle cx="139.5" cy="198.9" r="3.4"/><circle cx="148.5" cy="198.9" r="3.4"/><circle cx="18" cy="206.6" r="3.4"/><circle cx="27" cy="206.6" r="3.4"/><circle cx="36" cy="206.6" r="3.4"/><circle cx="45" cy="206.6" r="3.4"/><circle cx="54" cy="206.6" r="3.4"/><circle cx="63" cy="206.6" r="3.4"/><circle cx="72" cy="206.6" r="3.4"/><circle cx="81" cy="206.6" r="3.4"/><circle cx="90" cy="206.6" r="3.4"/><circle cx="99" cy="206.6" r="3.4"/><circle cx="108" cy="206.6" r="3.4"/><circle cx="117" cy="206.6" r="3.4"/><circle cx="126" cy="206.6" r="3.4"/><circle cx="135" cy="206.6" r="3.4"/><circle cx="144" cy="206.6" r="3.4"/><circle cx="153" cy="206.6" r="3.4"/><circle cx="13.5" cy="214.4" r="3.4"/><circle cx="22.5" cy="214.4" r="3.4"/><circle cx="31.5" cy="214.4" r="3.4"/><circle cx="40.5" cy="214.4" r="3.4"/><circle cx="49.5" cy="214.4" r="3.4"/><circle cx="58.5" cy="214.4" r="3.4"/><circle cx="67.5" cy="214.4" r="3.4"/><circle cx="76.5" cy="214.4" r="3.4"/><circle cx="85.5" cy="214.4" r="3.4"/><circle cx="94.5" cy="214.4" r="3.4"/><circle cx="103.5" cy="214.4" r="3.4"/><circle cx="112.5" cy="214.4" r="3.4"/><circle cx="121.5" cy="214.4" r="3.4"/><circle cx="130.5" cy="214.4" r="3.4"/><circle cx="139.5" cy="214.4" r="3.4"/><circle cx="148.5" cy="214.4" r="3.4"/><circle cx="18" cy="222.2" r="3.4"/><circle cx="27" cy="222.2" r="3.4"/><circle cx="36" cy="222.2" r="3.4"/><circle cx="45" cy="222.2" r="3.4"/><circle cx="54" cy="222.2" r="3.4"/><circle cx="63" cy="222.2" r="3.4"/><circle cx="72" cy="222.2" r="3.4"/><circle cx="81" cy="222.2" r="3.4"/><circle cx="90" cy="222.2" r="3.4"/><circle cx="99" cy="222.2" r="3.4"/><circle cx="108" cy="222.2" r="3.4"/><circle cx="117" cy="222.2" r="3.4"/><circle cx="126" cy="222.2" r="3.4"/><circle cx="135" cy="222.2" r="3.4"/><circle cx="144" cy="222.2" r="3.4"/><circle cx="22.5" cy="230" r="3.4"/><circle cx="31.5" cy="230" r="3.4"/><circle cx="40.5" cy="230" r="3.4"/><circle cx="49.5" cy="230" r="3.4"/><circle cx="58.5" cy="230" r="3.4"/><circle cx="67.5" cy="230" r="3.4"/><circle cx="76.5" cy="230" r="3.4"/><circle cx="85.5" cy="230" r="3.4"/><circle cx="94.5" cy="230" r="3.4"/><circle cx="103.5" cy="230" r="3.4"/><circle cx="112.5" cy="230" r="3.4"/><circle cx="121.5" cy="230" r="3.4"/><circle cx="130.5" cy="230" r="3.4"/><circle cx="139.5" cy="230" r="3.4"/><circle cx="18" cy="237.8" r="3.4"/><circle cx="27" cy="237.8" r="3.4"/><circle cx="36" cy="237.8" r="3.4"/><circle cx="45" cy="237.8" r="3.4"/><circle cx="54" cy="237.8" r="3.4"/><circle cx="63" cy="237.8" r="3.4"/><circle cx="72" cy="237.8" r="3.4"/><circle cx="81" cy="237.8" r="3.4"/><circle cx="90" cy="237.8" r="3.4"/><circle cx="99" cy="237.8" r="3.4"/><circle cx="108" cy="237.8" r="3.4"/><circle cx="117" cy="237.8" r="3.4"/><circle cx="126" cy="237.8" r="3.4"/><circle cx="135" cy="237.8" r="3.4"/><circle cx="144" cy="237.8" r="3.4"/><circle cx="22.5" cy="245.6" r="3.4"/><circle cx="31.5" cy="245.6" r="3.4"/><circle cx="40.5" cy="245.6" r="3.4"/><circle cx="49.5" cy="245.6" r="3.4"/><circle cx="58.5" cy="245.6" r="3.4"/><circle cx="67.5" cy="245.6" r="3.4"/><circle cx="76.5" cy="245.6" r="3.4"/><circle cx="85.5" cy="245.6" r="3.4"/><circle cx="94.5" cy="245.6" r="3.4"/><circle cx="103.5" cy="245.6" r="3.4"/><circle cx="112.5" cy="245.6" r="3.4"/><circle cx="121.5" cy="245.6" r="3.4"/><circle cx="130.5" cy="245.6" r="3.4"/><circle cx="139.5" cy="245.6" r="3.4"/><circle cx="27" cy="253.4" r="3.4"/><circle cx="36" cy="253.4" r="3.4"/><circle cx="45" cy="253.4" r="3.4"/><circle cx="54" cy="253.4" r="3.4"/><circle cx="63" cy="253.4" r="3.4"/><circle cx="72" cy="253.4" r="3.4"/><circle cx="81" cy="253.4" r="3.4"/><circle cx="90" cy="253.4" r="3.4"/><circle cx="99" cy="253.4" r="3.4"/><circle cx="108" cy="253.4" r="3.4"/><circle cx="117" cy="253.4" r="3.4"/><circle cx="126" cy="253.4" r="3.4"/><circle cx="135" cy="253.4" r="3.4"/><circle cx="31.5" cy="261.2" r="3.4"/><circle cx="40.5" cy="261.2" r="3.4"/><circle cx="49.5" cy="261.2" r="3.4"/><circle cx="58.5" cy="261.2" r="3.4"/><circle cx="67.5" cy="261.2" r="3.4"/><circle cx="76.5" cy="261.2" r="3.4"/><circle cx="85.5" cy="261.2" r="3.4"/><circle cx="94.5" cy="261.2" r="3.4"/><circle cx="103.5" cy="261.2" r="3.4"/><circle cx="112.5" cy="261.2" r="3.4"/><circle cx="121.5" cy="261.2" r="3.4"/><circle cx="130.5" cy="261.2" r="3.4"/><circle cx="139.5" cy="261.2" r="3.4"/><circle cx="27" cy="269" r="3.4"/><circle cx="36" cy="269" r="3.4"/><circle cx="45" cy="269" r="3.4"/><circle cx="54" cy="269" r="3.4"/><circle cx="63" cy="269" r="3.4"/><circle cx="72" cy="269" r="3.4"/><circle cx="81" cy="269" r="3.4"/><circle cx="90" cy="269" r="3.4"/><circle cx="99" cy="269" r="3.4"/><circle cx="108" cy="269" r="3.4"/><circle cx="117" cy="269" r="3.4"/><circle cx="126" cy="269" r="3.4"/><circle cx="135" cy="269" r="3.4"/><circle cx="31.5" cy="276.8" r="3.4"/><circle cx="40.5" cy="276.8" r="3.4"/><circle cx="49.5" cy="276.8" r="3.4"/><circle cx="58.5" cy="276.8" r="3.4"/><circle cx="67.5" cy="276.8" r="3.4"/><circle cx="76.5" cy="276.8" r="3.4"/><circle cx="85.5" cy="276.8" r="3.4"/><circle cx="94.5" cy="276.8" r="3.4"/><circle cx="103.5" cy="276.8" r="3.4"/><circle cx="112.5" cy="276.8" r="3.4"/><circle cx="121.5" cy="276.8" r="3.4"/><circle cx="130.5" cy="276.8" r="3.4"/><circle cx="36" cy="284.6" r="3.4"/><circle cx="45" cy="284.6" r="3.4"/><circle cx="54" cy="284.6" r="3.4"/><circle cx="63" cy="284.6" r="3.4"/><circle cx="72" cy="284.6" r="3.4"/><circle cx="81" cy="284.6" r="3.4"/><circle cx="90" cy="284.6" r="3.4"/><circle cx="99" cy="284.6" r="3.4"/><circle cx="108" cy="284.6" r="3.4"/><circle cx="117" cy="284.6" r="3.4"/><circle cx="126" cy="284.6" r="3.4"/><circle cx="31.5" cy="292.4" r="3.4"/><circle cx="40.5" cy="292.4" r="3.4"/><circle cx="49.5" cy="292.4" r="3.4"/><circle cx="58.5" cy="292.4" r="3.4"/><circle cx="67.5" cy="292.4" r="3.4"/><circle cx="76.5" cy="292.4" r="3.4"/><circle cx="85.5" cy="292.4" r="3.4"/><circle cx="94.5" cy="292.4" r="3.4"/><circle cx="103.5" cy="292.4" r="3.4"/><circle cx="112.5" cy="292.4" r="3.4"/><circle cx="121.5" cy="292.4" r="3.4"/><circle cx="36" cy="300.2" r="3.4"/><circle cx="45" cy="300.2" r="3.4"/><circle cx="54" cy="300.2" r="3.4"/><circle cx="63" cy="300.2" r="3.4"/><circle cx="72" cy="300.2" r="3.4"/><circle cx="81" cy="300.2" r="3.4"/><circle cx="90" cy="300.2" r="3.4"/><circle cx="99" cy="300.2" r="3.4"/><circle cx="108" cy="300.2" r="3.4"/><circle cx="117" cy="300.2" r="3.4"/><circle cx="40.5" cy="308" r="3.4"/><circle cx="49.5" cy="308" r="3.4"/><circle cx="58.5" cy="308" r="3.4"/><circle cx="67.5" cy="308" r="3.4"/><circle cx="76.5" cy="308" r="3.4"/><circle cx="85.5" cy="308" r="3.4"/><circle cx="94.5" cy="308" r="3.4"/><circle cx="103.5" cy="308" r="3.4"/><circle cx="112.5" cy="308" r="3.4"/><circle cx="54" cy="315.8" r="3.4"/><circle cx="63" cy="315.8" r="3.4"/><circle cx="72" cy="315.8" r="3.4"/><circle cx="81" cy="315.8" r="3.4"/><circle cx="90" cy="315.8" r="3.4"/><circle cx="99" cy="315.8" r="3.4"/><circle cx="108" cy="315.8" r="3.4"/><circle cx="58.5" cy="323.6" r="3.4"/><circle cx="67.5" cy="323.6" r="3.4"/><circle cx="76.5" cy="323.6" r="3.4"/><circle cx="85.5" cy="323.6" r="3.4"/><circle cx="94.5" cy="323.6" r="3.4"/><circle cx="63" cy="331.3" r="3.4"/><circle cx="72" cy="331.3" r="3.4"/><circle cx="81" cy="331.3" r="3.4"/><circle cx="90" cy="331.3" r="3.4"/><circle cx="67.5" cy="339.1" r="3.4"/><circle cx="76.5" cy="339.1" r="3.4"/><circle cx="85.5" cy="339.1" r="3.4"/><circle cx="72" cy="346.9" r="3.4"/><circle cx="81" cy="346.9" r="3.4"/><circle cx="76.5" cy="354.7" r="3.4"/><circle cx="85.5" cy="354.7" r="3.4"/><circle cx="81" cy="362.5" r="3.4"/><circle cx="76.5" cy="370.3" r="3.4"/><circle cx="85.5" cy="370.3" r="3.4"/><circle cx="81" cy="378.1" r="3.4"/></g>
+          <g class="pins" fill="none">
+            <g class="pin"><circle class="pin-ring" cx="162" cy="35.2" r="6"/><circle class="pin-dot" cx="162" cy="35.2" r="5.2"/></g>
+            <g class="pin"><circle class="pin-ring" cx="67.5" cy="136.5" r="6"/><circle class="pin-dot" cx="67.5" cy="136.5" r="5.2"/></g>
+            <g class="pin"><circle class="pin-ring" cx="157.5" cy="152.1" r="6"/><circle class="pin-dot" cx="157.5" cy="152.1" r="5.2"/></g>
+            <g class="pin"><circle class="pin-ring" cx="31.5" cy="261.2" r="6"/><circle class="pin-dot" cx="31.5" cy="261.2" r="5.2"/></g>
+            <g class="pin"><circle class="pin-ring" cx="36" cy="300.2" r="6"/><circle class="pin-dot" cx="36" cy="300.2" r="5.2"/></g>
+            <g class="pin"><circle class="pin-ring" cx="117" cy="284.6" r="6"/><circle class="pin-dot" cx="117" cy="284.6" r="5.2"/></g>
+          </g>
+        </svg>
+
+        <div class="result-card">
+          <div class="mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <div>
+            <div class="name">大安區行政中心 避難收容處所</div>
+            <div class="meta">距離你 320 公尺 · 步行約 4 分鐘</div>
+            <span class="tag">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="11" height="11" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              座標精確
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="wrap">
+        <div class="stat"><b>22</b><span>縣市完整涵蓋</span></div>
+        <div class="stat"><b>5,854</b><span>座避難收容處所</span></div>
+        <div class="stat"><b>98.0%</b><span>座標品質通過率</span></div>
+        <div class="stat"><b>0</b><span>需要申請的金鑰</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Features ---------- -->
+  <section class="band" id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">功能特色</span>
+        <h2>災害發生時，快與準最重要</h2>
+        <p>從搜尋、定位到導航，每一步都設計成在慌亂的時候也能一眼看懂。</p>
+      </div>
+
+      <div class="cards">
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg></div>
+          <h3>全臺一次搜尋</h3>
+          <p>支援名稱、地址與災害類型篩選，一次涵蓋全臺 22 縣市的官方資料，不必先選縣市再慢慢找。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <h3>自動找最近的</h3>
+          <p>取得定位後立刻列出最近的收容處所與步行時間，搜尋半徑會隨著地圖縮放自動調整。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
+          <h3>座標品質透明</h3>
+          <p>每一筆都標示座標來源與精確度。概略位置會明講是概略，不會讓你把它誤認成災時的實際開放入口。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg></div>
+          <h3>三種官方底圖</h3>
+          <p>內政部國土測繪中心 WMTS 的電子、地形與正射影像底圖自由切換，看地形或看實景都行。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 19-9-9 19-2-8-8-2z"/></svg></div>
+          <h3>一鍵開始導航</h3>
+          <p>從設施詳情直接叫出手機上的地圖 App 開始導航，不用抄地址、不用切換視窗重新輸入。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="11" rx="2"/><path d="M16 9h3.5L22 12v4h-6z"/><circle cx="6.5" cy="18.5" r="1.6"/><circle cx="17.5" cy="18.5" r="1.6"/></svg></div>
+          <h3>周邊交通資訊</h3>
+          <p>顯示避難所附近的公車站、台鐵與高鐵站及距離，方便規劃徒步路線或安排轉乘。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- How it works ---------- -->
+  <section class="band" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">怎麼用</span>
+        <h2>三步就能出發</h2>
+        <p>建議平常就先開一次，把住家與公司附近的收容處所記起來。</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="num">1</div>
+          <h3>開啟地圖</h3>
+          <p>用瀏覽器打開就能用，不必下載 App、不必註冊帳號。手機加到主畫面後就像原生 App 一樣。</p>
+        </div>
+        <div class="step">
+          <div class="num">2</div>
+          <h3>允許定位</h3>
+          <p>同意取用位置後，最近的收容處所會依距離排好。不想給定位也沒關係，直接搜尋地址一樣查得到。</p>
+        </div>
+        <div class="step">
+          <div class="num">3</div>
+          <h3>出發前往</h3>
+          <p>點開設施看容納資訊與座標品質，確認後按下導航，交給你慣用的手機地圖 App 帶路。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Data ---------- -->
+  <section class="band" id="data">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">資料來源</span>
+        <h2>資料從哪來，可靠到什麼程度</h2>
+        <p>主要資料來自內政部消防署「避難收容處所點位檔」，每一筆進系統前都要通過座標品質檢查。</p>
+      </div>
+
+      <div class="cards">
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg></div>
+          <h3>政府官方點位檔</h3>
+          <p>上游約 5,973 筆全臺資料，通過座標品質閘門的 5,854 筆（98.0%）才會進入系統，其餘因座標明顯落在所屬縣市範圍外而被排除，被拒清單也一併公開。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 3v6h-6"/></svg></div>
+          <h3>上游掛掉也查得到</h3>
+          <p>上游服務正常時抓最新資料；一旦上游失敗或回傳筆數異常，會自動退回進版控的全國快照，地圖照樣能查——災時最不能接受的就是打不開。</p>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <h3>不需要任何金鑰</h3>
+          <p>避難所資料與國土測繪中心底圖都不需要 API Key。任何人 clone 下來 <code>docker compose up</code> 就能跑起一套完整的自有部署。</p>
+        </article>
+      </div>
+
+      <div class="notice" style="margin-top: 48px;">
+        <div class="ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        </div>
+        <div>
+          <h3>這是查詢輔助工具，不是官方災害應變系統</h3>
+          <p>TESIIS 幫助你事先掌握避難收容處所的位置與資訊。但災害真的發生時，請務必以各地方政府的即時公告與現場人員的指示為準。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- Final CTA ---------- -->
+  <section class="cta">
+    <div class="wrap">
+      <h2>先花一分鐘，找到離你最近的避難所</h2>
+      <p>不用等到警報響起才開始查。現在就看看住家和公司附近有哪些收容處所。</p>
+      <div class="row">
+        <a class="btn btn-primary" href="/app/">
+          立即查看地圖
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-onnavy" href="https://github.com/TESIIS/TESIIS" target="_blank" rel="noopener">在 GitHub 上參與</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer" id="about">
+  <div class="wrap">
+    <div class="footer-top">
+      <div>
+        <a class="brand" href="#top">
+          <img src="assets/logo.png" alt="" width="34" height="34" />
+          <span>TESIIS</span>
+        </a>
+        <p class="about">
+          源自 2025 臺北程式設計節城市通微服務大黑客松團隊 30 之作品，現由團隊成員 伊藤蒼太 與 twcat0503 持續維護。
+        </p>
+      </div>
+
+      <nav class="footer-links" aria-label="頁尾連結">
+        <a href="/app/">進入服務</a>
+        <a href="https://github.com/TESIIS/TESIIS" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/TESIIS/TESIIS/blob/master/NOTICE.md" target="_blank" rel="noopener">資料來源聲明</a>
+        <a href="https://github.com/TESIIS/TESIIS/blob/master/LICENSE" target="_blank" rel="noopener">MIT 授權條款</a>
+        <a href="https://github.com/TESIIS/TESIIS/blob/master/SECURITY.md" target="_blank" rel="noopener">安全性通報</a>
+        <a href="https://github.com/TESIIS/TESIIS/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener">參與貢獻</a>
+      </nav>
+    </div>
+
+    <div class="footer-bottom">
+      <span>程式碼採 MIT License 釋出，資料檔與外部服務另有使用條款。</span>
+      <span>資料來源：內政部消防署 · 內政部國土測繪中心</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

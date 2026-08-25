@@ -15,13 +15,15 @@ COPY assets ./assets
 COPY web ./web
 
 RUN flutter build web --release \
+    --base-href /app/ \
     --dart-define=API_BASE_URL=${API_BASE_URL} && \
     printf '{"sha":"%s"}\n' "${BUILD_SHA}" > /app/build/web/build-info.json
 
 FROM nginx:1.29-alpine AS runtime
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/build/web /usr/share/nginx/html
+COPY landing /usr/share/nginx/html
+COPY --from=build /app/build/web /usr/share/nginx/html/app
 
 EXPOSE 8080
 

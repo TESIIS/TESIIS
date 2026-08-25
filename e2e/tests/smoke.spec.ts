@@ -77,6 +77,21 @@ async function fetchSampleShelter(
 }
 
 test.describe('shelter web smoke', () => {
+  test('landing page loads and links into the map app', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveTitle('TESIIS 臺灣避難收容所地圖');
+
+    // The same call to action appears in the hero and again in the closing
+    // band, so this asserts on the first rather than tripping strict mode.
+    const cta = page.getByRole('link', { name: '立即查看地圖' }).first();
+    await expect(cta).toBeVisible();
+    await expect(cta).toHaveAttribute('href', '/app/');
+
+    // The landing page must not pull in the Flutter bundle — that is the whole
+    // point of splitting it out from the app at /app/.
+    await expect(page.locator('script[src*="flutter"]')).toHaveCount(0);
+  });
+
   test('homepage loads and the map renders', async ({ page }) => {
     // This is usually the first test to touch a fresh browser profile, so it
     // pays the one-time cost of downloading and compiling CanvasKit/WASM with
@@ -84,7 +99,7 @@ test.describe('shelter web smoke', () => {
     // is tight for that even before any assertion runs.
     test.setTimeout(60_000);
 
-    await page.goto('/');
+    await page.goto('/app/');
     await expect(page).toHaveTitle('臺灣避難收容所資訊整合系統');
     await enableSemantics(page);
 
@@ -98,7 +113,7 @@ test.describe('shelter web smoke', () => {
 
     const sample = await fetchSampleShelter(request, baseURL!, '臺北市');
 
-    await page.goto('/');
+    await page.goto('/app/');
     await enableSemantics(page);
 
     await page.getByRole('button', { name: '搜尋' }).click();
@@ -117,7 +132,7 @@ test.describe('shelter web smoke', () => {
 
     const sample = await fetchSampleShelter(request, baseURL!, '高雄市');
 
-    await page.goto('/');
+    await page.goto('/app/');
     await enableSemantics(page);
 
     await page.getByRole('button', { name: '搜尋' }).click();
@@ -133,7 +148,7 @@ test.describe('shelter web smoke', () => {
   test('台貓署名會開啟個人網站', async ({ page }) => {
     test.setTimeout(60_000);
 
-    await page.goto('/');
+    await page.goto('/app/');
     await enableSemantics(page);
     await page.getByRole('button', { name: '關於我們' }).click();
     const twcatLink = page.getByRole('button', { name: /^台貓/ });
@@ -160,7 +175,7 @@ test.describe('shelter web smoke', () => {
   test('search shows the empty state for a query with no matches', async ({ page }) => {
     test.setTimeout(60_000);
 
-    await page.goto('/');
+    await page.goto('/app/');
     await enableSemantics(page);
 
     await page.getByRole('button', { name: '搜尋' }).click();
@@ -195,7 +210,7 @@ test.describe('shelter web smoke', () => {
       latency: 150,
     });
 
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/app/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('status')).toContainText('正在載入');
     await enableSemantics(page);
 

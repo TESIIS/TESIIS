@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **宣傳首頁。** 新增 `flutter_codefest/landing/`，靜態頁面介紹功能特色、資料來源與免責聲明，掛在網站根目錄 `/`；Flutter 地圖 App 因此改掛到 `/app/`（`flutter build web --base-href /app/`），nginx 對應調整路由。
+
 ## [2.0.0] - 2026-08-25
 
 讓專案真正可用並完成開源化。這一輪修掉的是「clone 下來跑不動」的三個獨立原因。

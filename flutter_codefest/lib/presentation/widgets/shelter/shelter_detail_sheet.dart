@@ -89,7 +89,9 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
 
   @override
   Widget build(BuildContext context) {
-    return widget.wide ? _buildWideSidebar(context) : _buildMobileSheet(context);
+    return widget.wide
+        ? _buildWideSidebar(context)
+        : _buildMobileSheet(context);
   }
 
   // ---------------------------------------------------------------------

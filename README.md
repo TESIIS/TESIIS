@@ -35,7 +35,7 @@ cd TESIIS
 docker compose up --build
 ```
 
-開啟 <http://localhost:8080>。服務健康狀態可由 <http://localhost:8080/healthz> 查詢。
+開啟 <http://localhost:8080> 會看到宣傳首頁；點選「進入服務」或直接開啟 <http://localhost:8080/app/> 進入地圖。服務健康狀態可由 <http://localhost:8080/healthz> 查詢。
 
 若 8080 已被使用：
 
@@ -92,7 +92,8 @@ Dart Shelf API
 
 | 目錄 | 用途 |
 | --- | --- |
-| `flutter_codefest/` | Flutter 地圖介面、定位、搜尋與設施詳情 |
+| `flutter_codefest/` | Flutter 地圖介面、定位、搜尋與設施詳情，建置後掛在 `/app/` 路徑下 |
+| `flutter_codefest/landing/` | 宣傳首頁（靜態頁面），部署後掛在網站根目錄 `/` |
 | `server/` | Dart Shelf API、資料正規化、快取與座標驗證 |
 | `server/data/` | 全國避難收容處所快照與產生資料 |
 | `e2e/` | Playwright 端對端測試 |
