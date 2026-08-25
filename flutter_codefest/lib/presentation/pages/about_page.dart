@@ -90,14 +90,9 @@ class AboutPage extends StatelessWidget {
 
     return Column(
       children: [
-        CircleAvatar(
+        const CircleAvatar(
           radius: 32,
-          backgroundColor: colorScheme.primaryContainer,
-          child: Icon(
-            Icons.shield_outlined,
-            size: 34,
-            color: colorScheme.onPrimaryContainer,
-          ),
+          backgroundImage: AssetImage('assets/icons/app_logo.png'),
         ),
         const SizedBox(height: 12),
         Text(

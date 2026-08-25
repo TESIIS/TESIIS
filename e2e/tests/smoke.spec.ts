@@ -168,12 +168,13 @@ test.describe('shelter web smoke', () => {
     // The Chinese search-bar text this test waits for can only paint once
     // CanvasKit *and* the bundled NotoSansTC font (~12MB, confirmed via a
     // network trace — canvaskit does its own text shaping with no
-    // browser-native font fallback) are both in. Neither nginx.conf's
-    // gzip_types nor a plain static server compresses that font — TTF has no
-    // MIME type in nginx by default, so it isn't on the gzip allowlist and
-    // ships at full size everywhere, this test included. Measured locally at
-    // a 6Mbps/150ms throttle: ~60-70s just for that one file. The timeout
-    // below has real margin over that, measured, not guessed.
+    // browser-native font fallback) are both in. nginx.conf now gives .ttf
+    // an explicit MIME type and gzips it (it previously had neither — TTF
+    // has no MIME type in nginx by default, so it wasn't on the gzip
+    // allowlist and shipped at full size everywhere, this test included).
+    // The pre-fix timeout here was measured at ~60-70s for that one file on
+    // a 6Mbps/150ms throttle; kept as-is since the post-fix number hasn't
+    // been re-measured, but there should be real margin to spare now.
     test.setTimeout(150_000);
 
     // Network.emulateNetworkConditions is Chromium-only, which matches this

@@ -112,8 +112,8 @@ TDX 沒有避難收容所主資料。它在本系統的責任是：
 > `nginx.conf` 的 `gzip_types` 清單裡（nginx 預設沒有 `.ttf` 的 MIME type，
 > 所以連歸類都歸類不到，更別說壓縮）——這個字型無論本機或正式站都是原始大小
 > 傳輸。測試的 timeout 是照這個真實情況量出來的（120s），不是憑空抓的數字；
-> 要不要順手修 `nginx.conf` 幫這個字型加 MIME type + gzip 是後續可以做的優化，
-> 這次沒有動它。
+> `nginx.conf` 已補上 `.ttf`／`.otf` 的 MIME type（nginx 內建 mime.types
+> 沒有這兩個副檔名）並加入 `gzip_types`，這個瓶頸已修正。
 
 - 初次進站優先使用使用者定位；未授權時顯示全國視野與縣市選擇器。
 - 地圖依 viewport 請求資料，加入 marker clustering；不建立 5,000 個以上 Widget。

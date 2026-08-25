@@ -72,4 +72,10 @@ class MapConstants {
   /// Fixed width for the search/detail/nearby panels once desktop layout
   /// kicks in.
   static const double desktopPanelWidth = 420;
+
+  /// Initial height fraction of [ShelterDetailSheet]'s mobile bottom sheet.
+  /// Shared with `map_page.dart`'s marker-centering math, which needs to
+  /// know how much of the screen the sheet covers before the
+  /// `DraggableScrollableSheet` itself has laid out.
+  static const double mobileDetailSheetInitialFraction = 0.35;
 }

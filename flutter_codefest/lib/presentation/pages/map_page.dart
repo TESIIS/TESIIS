@@ -23,6 +23,7 @@ import 'package:flutter_codefest/presentation/widgets/shelter/nearby_shelter_pan
 import 'package:flutter_codefest/presentation/widgets/shelter/shelter_detail_sheet.dart';
 import 'package:flutter_codefest/presentation/widgets/common/status_banner.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -66,6 +67,15 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   /// becomes the nearest one (the user moved somewhere the old dismissal no
   /// longer applies to), or the user taps the reopen button.
   String? _nearbyPanelDismissedFor;
+
+  /// Last-known detail/nearby-panel data, kept around after the view model
+  /// clears its own copy so [ShelterDetailSheet] and [NearbyShelterPanel]
+  /// still have something to render while their close animation plays —
+  /// otherwise the content would disappear instantly and only the empty
+  /// panel shell would animate out.
+  Shelter? _lastSelectedShelter;
+  Shelter? _lastNearestShelter;
+  Position? _lastNearbyPosition;
 
   @override
   void initState() {
@@ -136,14 +146,60 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     FocusScope.of(context).unfocus();
   }
 
+  /// Jumps the camera to [shelter]'s location. Tapping a marker or a search
+  /// result can both happen from a nationwide-zoomed-out view, where just
+  /// panning would land the destination somewhere off-screen or too small
+  /// to register as "here it is" — so this also zooms in when the current
+  /// zoom is looser than [MapConstants.visibleRadiusZoom], on top of the
+  /// pan.
+  ///
+  /// Selecting a shelter always opens [ShelterDetailSheet], which covers
+  /// part of the map — the right edge on desktop, the bottom on mobile.
+  /// Centering on the shelter's raw lat/lng would land it half-hidden behind
+  /// that panel, so the destination is offset by half the panel's footprint
+  /// first, landing the shelter centered in whatever's left visible instead.
   void _onMarkerTapped(Shelter shelter) {
     _viewModel.selectShelter(shelter);
     if (_isMapReady && shelter.hasCoordinate) {
-      _animatedMapMove(
-        LatLng(shelter.latitude!, shelter.longitude!),
-        _mapController.camera.zoom,
-      );
+      final shelterLatLng = LatLng(shelter.latitude!, shelter.longitude!);
+      final camera = _mapController.camera;
+      final currentZoom = camera.zoom;
+      final targetZoom = currentZoom < MapConstants.visibleRadiusZoom
+          ? MapConstants.visibleRadiusZoom
+          : currentZoom;
+
+      // Best-effort: land the shelter centered in whatever the detail panel
+      // (right edge on desktop, bottom sheet on mobile) leaves visible,
+      // instead of half-hidden behind it. Falls back to a plain centered
+      // pan if the projection math ever misbehaves, so a bug here degrades
+      // the polish rather than breaking the jump entirely.
+      var target = shelterLatLng;
+      try {
+        final screenSize = MediaQuery.of(context).size;
+        final isWide = screenSize.width >= MapConstants.desktopBreakpoint;
+        final panelObstruction = isWide
+            ? Offset(16 + MapConstants.desktopPanelWidth, 0)
+            : Offset(
+                0,
+                screenSize.height *
+                    MapConstants.mobileDetailSheetInitialFraction,
+              );
+        final shelterPoint = camera.projectAtZoom(shelterLatLng, targetZoom);
+        final centeredPoint = shelterPoint + panelObstruction / 2;
+        target = camera.unprojectAtZoom(centeredPoint, targetZoom);
+      } catch (e) {
+        debugPrint('避難點置中偏移計算失敗，改用一般置中: $e');
+      }
+
+      _animatedMapMove(target, targetZoom);
     }
+  }
+
+  /// Same jump as tapping a marker, plus closing the search box — picking a
+  /// result from the list should feel like "go there", not just select it.
+  void _onSearchResultSelected(Shelter shelter) {
+    _onMarkerTapped(shelter);
+    _toggleSearch();
   }
 
   /// Eases the camera to [destLocation]/[destZoom] instead of jumping there,
@@ -320,13 +376,24 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final colorScheme = Theme.of(context).colorScheme;
     final vm = _viewModel;
 
+    if (vm.selectedShelter != null) _lastSelectedShelter = vm.selectedShelter;
+    if (vm.currentPosition != null && vm.nearbyShelters.isNotEmpty) {
+      _lastNearestShelter = vm.nearbyShelters.first;
+      _lastNearbyPosition = vm.currentPosition;
+    }
+
     // Markers come from the server's per-viewport cluster endpoint while
     // browsing; during a search the current result page is clustered
-    // client-side so the pins track exactly what the list shows.
+    // client-side so the pins track exactly what the list shows. Before a
+    // query is typed, the search box shows the nearest-first preview list
+    // instead of results — the map mirrors that with the same shelters.
     final zoom = _isMapReady ? _mapController.camera.zoom : 12.0;
+    final searchShelters = vm.searchQuery.isEmpty
+        ? vm.searchPreview
+        : vm.searchResults;
     final clusters = vm.isSearching
         ? clusterShelters([
-            for (final s in vm.searchResults)
+            for (final s in searchShelters)
               if (s.hasCoordinate) s,
           ], zoom: zoom)
         : vm.clusters;
@@ -338,20 +405,29 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       onClusterTap: _onClusterTapped,
     );
 
-    final nearbyPanelAvailable =
+    final isWide =
+        MediaQuery.of(context).size.width >= MapConstants.desktopBreakpoint;
+
+    final nearestShelter =
+        vm.currentPosition != null && vm.nearbyShelters.isNotEmpty
+        ? vm.nearbyShelters.first
+        : _lastNearestShelter;
+    final nearestPosition = vm.currentPosition ?? _lastNearbyPosition;
+
+    final nearbyPanelWanted =
         vm.currentPosition != null &&
         vm.nearbyShelters.isNotEmpty &&
-        !vm.showShelterDetails &&
+        (isWide || !vm.showShelterDetails) &&
         !vm.isSearching;
     final nearbyPanelDismissed =
-        nearbyPanelAvailable &&
+        nearbyPanelWanted &&
         vm.nearbyShelters.first.shelterId == _nearbyPanelDismissedFor;
+    final nearbyPanelVisible = nearbyPanelWanted && !nearbyPanelDismissed;
 
     final hasFilters =
         vm.selectedDisasterTypes.isNotEmpty || vm.selectedSpaceTypes.isNotEmpty;
 
-    final isWide =
-        MediaQuery.of(context).size.width >= MapConstants.desktopBreakpoint;
+    final cornerButtonsBottom = isWide ? 16.0 : 380.0;
 
     return Stack(
       children: [
@@ -377,7 +453,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           ),
         Positioned(
           right: 16,
-          bottom: 260,
+          bottom: cornerButtonsBottom,
           child: BasemapSwitcher(
             selected: vm.basemap,
             onSelected: vm.switchBasemap,
@@ -385,7 +461,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         ),
         Positioned(
           right: 16,
-          bottom: 316,
+          bottom: cornerButtonsBottom + 56,
           child: Material(
             color: colorScheme.surface,
             shape: const CircleBorder(),
@@ -407,7 +483,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         ),
         Positioned(
           right: 16,
-          bottom: 372,
+          bottom: cornerButtonsBottom + 112,
           child: Material(
             color: colorScheme.surface,
             shape: const CircleBorder(),
@@ -424,7 +500,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         ),
         Positioned(
           right: 16,
-          bottom: 428,
+          bottom: cornerButtonsBottom + 168,
           child: Material(
             color: colorScheme.surface,
             shape: const CircleBorder(),
@@ -539,10 +615,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
                                   currentPosition: vm.currentPosition,
                                   selectedShelter: vm.selectedShelter,
                                   previewLabel: '距離最近的避難所',
-                                  onSelect: (shelter) {
-                                    _onMarkerTapped(shelter);
-                                    _toggleSearch();
-                                  },
+                                  onSelect: _onSearchResultSelected,
                                   onLoadMore: () {},
                                 )
                               : SearchResultsList(
@@ -553,10 +626,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
                                   hasFilters: hasFilters,
                                   currentPosition: vm.currentPosition,
                                   selectedShelter: vm.selectedShelter,
-                                  onSelect: (shelter) {
-                                    _onMarkerTapped(shelter);
-                                    _toggleSearch();
-                                  },
+                                  onSelect: _onSearchResultSelected,
                                   onLoadMore: vm.loadMoreSearch,
                                 ),
                         ),
@@ -567,31 +637,35 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           ),
         ),
 
-        // Not wrapped in the AnimatedSwitcher below: both layouts of
-        // ShelterDetailSheet root themselves directly in a Positioned /
+        // Not wrapped in AnimatedSwitcher: both layouts of ShelterDetailSheet
+        // and NearbyShelterPanel root themselves directly in a Positioned /
         // DraggableScrollableSheet that needs to sit directly in the Stack
-        // to self-position. AnimatedSwitcher's transitionBuilder interposes
-        // a FadeTransition RenderObject that breaks that — confirmed by a
-        // throwaway widget test before this comment was written.
-        if (vm.showShelterDetails && vm.selectedShelter != null)
+        // to self-position — AnimatedSwitcher's transitionBuilder interposes
+        // a FadeTransition RenderObject that breaks that (confirmed by a
+        // throwaway widget test before this comment was written). Instead,
+        // both stay mounted permanently once first shown and animate their
+        // own open/close internally, driven by `visible`.
+        if (_lastSelectedShelter != null)
           ShelterDetailSheet(
-            shelter: vm.selectedShelter!,
+            shelter: _lastSelectedShelter!,
             currentPosition: vm.currentPosition,
             onClose: vm.clearSelection,
-            onNavigate: () => _openNavigation(vm.selectedShelter!),
+            onNavigate: () => _openNavigation(_lastSelectedShelter!),
             wide: isWide,
+            visible: vm.showShelterDetails && vm.selectedShelter != null,
           ),
 
-        if (nearbyPanelAvailable && !nearbyPanelDismissed)
+        if (nearestShelter != null && nearestPosition != null)
           NearbyShelterPanel(
-            nearest: vm.nearbyShelters.first,
-            currentPosition: vm.currentPosition!,
-            onNavigate: () => _openNavigation(vm.nearbyShelters.first),
-            onViewDetail: () => _onMarkerTapped(vm.nearbyShelters.first),
+            nearest: nearestShelter,
+            currentPosition: nearestPosition,
+            onNavigate: () => _openNavigation(nearestShelter),
+            onViewDetail: () => _onMarkerTapped(nearestShelter),
             onClose: () => setState(() {
-              _nearbyPanelDismissedFor = vm.nearbyShelters.first.shelterId;
+              _nearbyPanelDismissedFor = nearestShelter.shelterId;
             }),
             wide: isWide,
+            visible: nearbyPanelVisible,
           ),
 
         if (nearbyPanelDismissed)

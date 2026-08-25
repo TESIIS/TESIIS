@@ -10,7 +10,11 @@ import 'package:geolocator/geolocator.dart';
 /// Below [MapConstants.desktopBreakpoint] this renders as the mobile
 /// full-width bottom band; at or above it, as a fixed-width floating card
 /// so it doesn't stretch across a wide window.
-class NearbyShelterPanel extends StatelessWidget {
+///
+/// Stays mounted across open/close so it can animate out instead of just
+/// vanishing — the caller keeps passing the last-known [nearest] while
+/// [visible] is false and the close animation plays.
+class NearbyShelterPanel extends StatefulWidget {
   const NearbyShelterPanel({
     super.key,
     required this.nearest,
@@ -19,6 +23,7 @@ class NearbyShelterPanel extends StatelessWidget {
     required this.onViewDetail,
     required this.onClose,
     this.wide = false,
+    this.visible = true,
   });
 
   final Shelter nearest;
@@ -27,31 +32,85 @@ class NearbyShelterPanel extends StatelessWidget {
   final VoidCallback onViewDetail;
   final VoidCallback onClose;
   final bool wide;
+  final bool visible;
+
+  @override
+  State<NearbyShelterPanel> createState() => _NearbyShelterPanelState();
+}
+
+class _NearbyShelterPanelState extends State<NearbyShelterPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: widget.visible ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(covariant NearbyShelterPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible != oldWidget.visible) {
+      if (widget.visible) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _animated(Widget child) {
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return IgnorePointer(
+      ignoring: !widget.visible,
+      child: FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: widget.wide ? const Offset(-1, 0) : const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      ),
+    );
+  }
 
   String get _distanceText {
+    final nearest = widget.nearest;
     if (!nearest.hasCoordinate) return '尚無座標';
     final meters = distanceToShelter(
       nearest,
-      currentPosition.latitude,
-      currentPosition.longitude,
+      widget.currentPosition.latitude,
+      widget.currentPosition.longitude,
     );
     return '距離 ${(meters / 1000).toStringAsFixed(2)} 公里';
   }
 
   String? get _walkingTimeText {
+    final nearest = widget.nearest;
     if (!nearest.hasCoordinate) return null;
     return formatWalkingTime(
       distanceToShelter(
         nearest,
-        currentPosition.latitude,
-        currentPosition.longitude,
+        widget.currentPosition.latitude,
+        widget.currentPosition.longitude,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return wide ? _buildWideCard(context) : _buildMobileBand(context);
+    return widget.wide ? _buildWideCard(context) : _buildMobileBand(context);
   }
 
   // ---------------------------------------------------------------------
@@ -65,44 +124,46 @@ class NearbyShelterPanel extends StatelessWidget {
       left: 16,
       bottom: 16,
       width: MapConstants.desktopPanelWidth,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(child: _Header(colorScheme: colorScheme)),
-                _CloseButton(colorScheme: colorScheme, onTap: onClose),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _InfoBlock(
-              nearest: nearest,
-              distanceText: _distanceText,
-              walkingTimeText: _walkingTimeText,
-              colorScheme: colorScheme,
-            ),
-            const SizedBox(height: 12),
-            _ActionButtons(
-              colorScheme: colorScheme,
-              onNavigate: onNavigate,
-              onViewDetail: onViewDetail,
-            ),
-          ],
+      child: _animated(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: _Header(colorScheme: colorScheme)),
+                  _CloseButton(colorScheme: colorScheme, onTap: widget.onClose),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _InfoBlock(
+                nearest: widget.nearest,
+                distanceText: _distanceText,
+                walkingTimeText: _walkingTimeText,
+                colorScheme: colorScheme,
+              ),
+              const SizedBox(height: 12),
+              _ActionButtons(
+                colorScheme: colorScheme,
+                onNavigate: widget.onNavigate,
+                onViewDetail: widget.onViewDetail,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -126,63 +187,65 @@ class NearbyShelterPanel extends StatelessWidget {
       left: 0,
       right: 0,
       bottom: 0,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.fromLTRB(
-          20,
-          8,
-          20,
-          16 + MediaQuery.paddingOf(context).bottom,
-        ),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
+      child: _animated(
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            16 + MediaQuery.paddingOf(context).bottom,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(0, -3),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, -3),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Row(
-              children: [
-                Expanded(child: _Header(colorScheme: colorScheme)),
-                _CloseButton(colorScheme: colorScheme, onTap: onClose),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _InfoBlock(
-              nearest: nearest,
-              distanceText: _distanceText,
-              walkingTimeText: _walkingTimeText,
-              colorScheme: colorScheme,
-            ),
-            const SizedBox(height: 12),
-            _ActionButtons(
-              colorScheme: colorScheme,
-              onNavigate: onNavigate,
-              onViewDetail: onViewDetail,
-            ),
-          ],
+              Row(
+                children: [
+                  Expanded(child: _Header(colorScheme: colorScheme)),
+                  _CloseButton(colorScheme: colorScheme, onTap: widget.onClose),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _InfoBlock(
+                nearest: widget.nearest,
+                distanceText: _distanceText,
+                walkingTimeText: _walkingTimeText,
+                colorScheme: colorScheme,
+              ),
+              const SizedBox(height: 12),
+              _ActionButtons(
+                colorScheme: colorScheme,
+                onNavigate: widget.onNavigate,
+                onViewDetail: widget.onViewDetail,
+              ),
+            ],
+          ),
         ),
       ),
     );

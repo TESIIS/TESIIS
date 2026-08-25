@@ -14,7 +14,11 @@ import 'package:geolocator/geolocator.dart';
 /// bottom sheet; at or above it, as a fixed-width sidebar docked to the
 /// right edge, full height, so it reads like a normal desktop side panel
 /// instead of a mobile sheet stretched thin.
-class ShelterDetailSheet extends StatelessWidget {
+///
+/// Stays mounted across open/close so it can animate out instead of just
+/// vanishing — the caller keeps passing the last-known [shelter] while
+/// [visible] is false and the close animation plays.
+class ShelterDetailSheet extends StatefulWidget {
   const ShelterDetailSheet({
     super.key,
     required this.shelter,
@@ -22,6 +26,7 @@ class ShelterDetailSheet extends StatelessWidget {
     required this.onClose,
     required this.onNavigate,
     this.wide = false,
+    this.visible = true,
   });
 
   final Shelter shelter;
@@ -29,10 +34,62 @@ class ShelterDetailSheet extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onNavigate;
   final bool wide;
+  final bool visible;
+
+  @override
+  State<ShelterDetailSheet> createState() => _ShelterDetailSheetState();
+}
+
+class _ShelterDetailSheetState extends State<ShelterDetailSheet>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: widget.visible ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(covariant ShelterDetailSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible != oldWidget.visible) {
+      if (widget.visible) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _animated(Widget child) {
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return IgnorePointer(
+      ignoring: !widget.visible,
+      child: FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: widget.wide ? const Offset(1, 0) : const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return wide ? _buildWideSidebar(context) : _buildMobileSheet(context);
+    return widget.wide ? _buildWideSidebar(context) : _buildMobileSheet(context);
   }
 
   // ---------------------------------------------------------------------
@@ -43,25 +100,30 @@ class ShelterDetailSheet extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Positioned(
-      top: 0,
-      right: 0,
-      bottom: 0,
+      top: 16,
+      right: 16,
+      bottom: 16,
       width: MapConstants.desktopPanelWidth,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(-3, 0),
+      child: _animated(
+        Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SafeArea(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                children: _content(context, colorScheme),
+              ),
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-            children: _content(context, colorScheme),
           ),
         ),
       ),
@@ -76,46 +138,48 @@ class ShelterDetailSheet extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.35,
-      minChildSize: 0.35,
+      initialChildSize: MapConstants.mobileDetailSheetInitialFraction,
+      minChildSize: MapConstants.mobileDetailSheetInitialFraction,
       maxChildSize: 0.8,
       snap: true,
       snapSizes: const [0.35, 0.8],
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
+        return _animated(
+          Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, -3),
+                ),
+              ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 10,
-                offset: const Offset(0, -3),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  children: _content(context, colorScheme),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    children: _content(context, colorScheme),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -127,7 +191,8 @@ class ShelterDetailSheet extends StatelessWidget {
   // ---------------------------------------------------------------------
 
   List<Widget> _content(BuildContext context, ColorScheme colorScheme) {
-    final position = currentPosition;
+    final shelter = widget.shelter;
+    final position = widget.currentPosition;
     final canNavigate =
         position != null &&
         shelter.latitude != null &&
@@ -148,7 +213,7 @@ class ShelterDetailSheet extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(icon: const Icon(Icons.close), onPressed: onClose),
+          IconButton(icon: const Icon(Icons.close), onPressed: widget.onClose),
         ],
       ),
       const Divider(height: 24),
@@ -157,7 +222,7 @@ class ShelterDetailSheet extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: onNavigate,
+            onPressed: widget.onNavigate,
             icon: Icon(Icons.navigation, color: colorScheme.onPrimary),
             label: Text(
               '開始導航 '
@@ -279,7 +344,7 @@ class ShelterDetailSheet extends StatelessWidget {
           lat: shelter.latitude!,
           lng: shelter.longitude!,
           city: shelter.city,
-          currentPosition: currentPosition,
+          currentPosition: position,
         ),
 
       const SizedBox(height: 16),
