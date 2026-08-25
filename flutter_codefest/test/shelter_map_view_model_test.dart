@@ -501,6 +501,38 @@ void main() {
       expect(vm.locationMessage, '請開啟定位服務');
     });
 
+    test('stops loading when the permission prompt does not answer', () async {
+      final permission = Completer<LocationPermission>();
+      final vm = ShelterMapViewModel(
+        fetchClusters: (params) async => const ClusterPage(clusters: []),
+        fetchShelterPage: (params) async =>
+            const ShelterPage(shelters: [], total: 0, truncated: false),
+        fetchNearby:
+            ({
+              required lat,
+              required lng,
+              radiusMeters,
+              limit = 10,
+              disasters,
+              spaces,
+            }) async => const [],
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.denied,
+        requestPermission: () => permission.future,
+        getLastKnownPosition: () async => null,
+        getCurrentPosition: () async => fakePosition(lat: 25.0, lng: 121.5),
+        locationPermissionTimeout: const Duration(milliseconds: 5),
+        cacheGet: (key) async => null,
+        cachePut: (key, body) async {},
+      );
+
+      await vm.getCurrentLocation();
+
+      expect(vm.isLoadingLocation, isFalse);
+      expect(vm.isLocationSuccess, isFalse);
+      expect(vm.locationMessage, contains('權限請求逾時'));
+    });
+
     test('on success, asks the server for nearby shelters', () async {
       final near = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
       Map<String, double>? nearbyCall;

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_codefest/core/constants/map_constants.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+final _issuesUri = Uri.parse('https://github.com/TESIIS/TESIIS/issues');
 
 class _SectionData {
   const _SectionData({
@@ -29,8 +32,8 @@ const _sections = [
     title: '2. 分類篩選',
     content: [
       '• 打開搜尋欄後會顯示分類按鈕',
-      '• 災害類型:土石流、海嘯、地震、水災',
-      '• 空間類型:室內、室外',
+      '• 災害類型：土石流、海嘯、地震、水災',
+      '• 空間類型：室內、室外',
       '• 可同時選擇多個分類進行複選篩選',
       '• 點擊已選取的分類可取消選取',
     ],
@@ -39,7 +42,7 @@ const _sections = [
     icon: Icons.my_location,
     title: '3. 定位功能',
     content: [
-      '• 點擊定位按鈕 (🎯) 取得目前位置',
+      '• 點擊定位按鈕（🎯）取得目前位置',
       '• 首次使用需授予定位權限',
       '• 定位成功後地圖會自動移至您的位置',
       '• 系統會自動計算並顯示最近的避難所',
@@ -49,11 +52,11 @@ const _sections = [
     icon: Icons.location_on,
     title: '4. 地圖標記',
     content: [
-      '• 紅色標記:目前選中的避難所',
-      '• 綠色標記:座標精確的避難所',
-      '• 黃色標記:座標為概略值的避難所',
+      '• 紅色標記：目前選中的避難所',
+      '• 綠色標記：座標精確的避難所',
+      '• 黃色標記：座標為概略值的避難所',
       '• 點擊標記可查看避難所詳細資訊',
-      '• 縮小時相近的避難所會合併成數量圓圈,點擊可放大查看',
+      '• 縮小時相近的避難所會合併成數量圓圈，點擊可放大查看',
     ],
   ),
   _SectionData(
@@ -62,9 +65,9 @@ const _sections = [
     content: [
       '• 點擊避難所標記或列表項目查看詳情',
       '• 顯示名稱、地址、距離資訊',
-      '• 顯示可容納的災害類型標籤',
-      '• 顯示室內/室外空間類型',
-      '• 可一鍵開始導航或查看更多詳情',
+      '• 顯示適用的災害類型標籤',
+      '• 顯示室內／室外空間類型',
+      '• 可一鍵開始導航',
     ],
   ),
   _SectionData(
@@ -72,9 +75,10 @@ const _sections = [
     title: '6. 導航功能',
     content: [
       '• 點擊「開始導航」按鈕',
-      '• 自動開啟 Google 地圖導航',
-      '• 提供最佳路線指引',
-      '• 可選擇步行、開車等交通方式',
+      '• 系統會開啟 Google 地圖網頁或應用程式',
+      '• 未開啟定位也可搜尋避難所位置',
+      '• 已定位時會預設以步行路線導航',
+      '• 可在 Google 地圖內切換其他交通方式',
     ],
   ),
   _SectionData(
@@ -105,8 +109,8 @@ const _sections = [
     content: [
       '• 確保裝置已開啟定位服務',
       '• 需要網路連線才能使用地圖和搜尋功能',
-      '• 導航功能需要安裝 Google 地圖應用程式',
-      '• 避難所資訊僅供參考,實際以當地政府公告為準',
+      '• 導航需要網路連線並會離開本系統',
+      '• 避難所資訊僅供參考，實際以當地政府公告為準',
       '• 災害發生時請遵循當地政府指示',
     ],
   ),
@@ -114,6 +118,18 @@ const _sections = [
 
 class UserManualPage extends StatelessWidget {
   const UserManualPage({super.key});
+
+  Future<void> _openIssues(BuildContext context) async {
+    final launched = await launchUrl(
+      _issuesUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('無法開啟 GitHub Issues')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,7 +226,7 @@ class UserManualPage extends StatelessWidget {
           Icon(Icons.help_outline, color: colorScheme.primary, size: 40),
           const SizedBox(height: 8),
           Text(
-            '需要協助?',
+            '需要協助？',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -219,9 +235,15 @@ class UserManualPage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '如有任何問題或建議,歡迎聯絡我們',
+            '如有任何問題或建議，歡迎透過 GitHub Issues 告訴我們。',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => _openIssues(context),
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('前往 GitHub Issues'),
           ),
         ],
       ),

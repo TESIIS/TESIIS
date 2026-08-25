@@ -194,9 +194,10 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
     final shelter = widget.shelter;
     final position = widget.currentPosition;
     final canNavigate =
-        position != null &&
-        shelter.latitude != null &&
-        shelter.longitude != null;
+        shelter.hasCoordinate || shelter.address.trim().isNotEmpty;
+    final distanceMeters = position != null && shelter.hasCoordinate
+        ? distanceToShelter(shelter, position.latitude, position.longitude)
+        : null;
 
     return [
       Row(
@@ -225,8 +226,10 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
             onPressed: widget.onNavigate,
             icon: Icon(Icons.navigation, color: colorScheme.onPrimary),
             label: Text(
-              '開始導航 '
-              '(${(distanceToShelter(shelter, position.latitude, position.longitude) / 1000).toStringAsFixed(2)} 公里)',
+              distanceMeters == null
+                  ? '開始導航'
+                  : '開始導航 '
+                        '(${(distanceMeters / 1000).toStringAsFixed(2)} 公里)',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -244,29 +247,24 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Icon(
-              Icons.directions_walk,
-              size: 16,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              formatWalkingTime(
-                distanceToShelter(
-                  shelter,
-                  position.latitude,
-                  position.longitude,
-                ),
-              ),
-              style: TextStyle(
-                fontSize: 13,
+        if (distanceMeters != null)
+          Row(
+            children: [
+              Icon(
+                Icons.directions_walk,
+                size: 16,
                 color: colorScheme.onSurfaceVariant,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 4),
+              Text(
+                formatWalkingTime(distanceMeters),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 16),
       ],
 

@@ -38,6 +38,7 @@ class SearchToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final compact = MediaQuery.sizeOf(context).width < 480;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -104,10 +105,12 @@ class SearchToolbar extends StatelessWidget {
                         horizontal: 12,
                       ),
                       child: Text(
-                        'TESIIS 臺灣避難收容所地圖',
+                        compact ? 'TESIIS 避難地圖' : 'TESIIS 臺灣避難收容所地圖',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: colorScheme.primary,
-                          fontSize: 18,
+                          fontSize: compact ? 17 : 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),

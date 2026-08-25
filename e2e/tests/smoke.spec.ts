@@ -17,14 +17,6 @@ async function enableSemantics(page: Page, timeout = 30_000) {
   await enableButton.dispatchEvent('click');
 }
 
-// The navigate button only renders once the app has a known position
-// (`ShelterDetailSheet`'s `canNavigate` check) — grant geolocation so the
-// suite exercises the same path a real user with location enabled would.
-test.use({
-  permissions: ['geolocation'],
-  geolocation: { latitude: 25.0478, longitude: 121.517 },
-});
-
 /// Types [query] into the search field and waits until the app actually
 /// fires the search request.
 ///
@@ -68,8 +60,7 @@ async function searchShelters(page: Page, query: string) {
 /// Picks a shelter with a coordinate on record. Every row in the nationwide
 /// dataset has one today — the NFA point file ships its own WGS84 columns and
 /// rows failing the county bounds check are dropped — so this is a guard
-/// against that changing, not a workaround for a known gap. The nav-button
-/// test needs it: the button only renders for a shelter with coordinates.
+/// against that changing, not a workaround for a known gap.
 async function fetchSampleShelter(
   request: import('@playwright/test').APIRequestContext,
   baseURL: string,
@@ -121,7 +112,7 @@ test.describe('shelter web smoke', () => {
     });
   });
 
-  test('opening a shelter shows the navigation button', async ({ page, request, baseURL }) => {
+  test('opening a shelter shows navigation without geolocation', async ({ page, request, baseURL }) => {
     test.setTimeout(60_000);
 
     const sample = await fetchSampleShelter(request, baseURL!, '高雄市');
@@ -137,6 +128,22 @@ test.describe('shelter web smoke', () => {
     await expect(page.getByText('開始導航', { exact: false })).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test('台貓署名會開啟個人網站', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    await page.goto('/');
+    await enableSemantics(page);
+    await page.getByRole('button', { name: '關於我們' }).click();
+    const twcatLink = page.getByRole('button', { name: /^台貓/ });
+    await expect(twcatLink).toBeVisible();
+
+    const popupPromise = page.waitForEvent('popup');
+    await twcatLink.click();
+    const popup = await popupPromise;
+    await expect(popup).toHaveURL(/^https:\/\/twcat0503\.org\/?/);
+    await popup.close();
   });
 
   test('the county picker surfaces nationwide coverage', async ({ request, baseURL }) => {
@@ -188,7 +195,8 @@ test.describe('shelter web smoke', () => {
       latency: 150,
     });
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('status')).toContainText('正在載入');
     await enableSemantics(page);
 
     await expect(page.getByText('TESIIS 臺灣避難收容所地圖')).toBeVisible({

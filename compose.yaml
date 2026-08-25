@@ -46,6 +46,7 @@ services:
       context: ./flutter_codefest
       args:
         API_BASE_URL: /api
+        BUILD_SHA: ${BUILD_SHA:-local}
     depends_on:
       api:
         condition: service_healthy

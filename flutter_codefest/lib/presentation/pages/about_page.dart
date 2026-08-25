@@ -22,15 +22,32 @@ final _members = [
     link: Uri.parse('https://itousouta.me'),
     avatarUrl: 'https://avatars.githubusercontent.com/u/193865350?v=4',
   ),
-  const _Member(name: '台貓', roles: ['原始成員', '後續維護'], avatarUrl: 'https://avatars.githubusercontent.com/u/130988476?v=4'),
-  const _Member(name: '南宮柳信', roles: ['原始成員'], avatarUrl: 'https://avatars.githubusercontent.com/u/208151118?v=4'),
-  const _Member(name: 'Z', roles: ['原始成員'], avatarUrl: 'https://avatars.githubusercontent.com/u/125567280?v=4'),
-  const _Member(name: 'q_nnn412', roles: ['原始成員'], avatarUrl: null),
+  _Member(
+    name: '台貓',
+    roles: const ['原始成員', '後續維護'],
+    link: Uri.parse('https://twcat0503.org'),
+    avatarUrl: 'https://avatars.githubusercontent.com/u/130988476?v=4',
+  ),
+  _Member(
+    name: '南宮柳信',
+    roles: const ['原始成員'],
+    link: Uri.parse('https://github.com/nangong5421'),
+    avatarUrl: 'https://avatars.githubusercontent.com/u/208151118?v=4',
+  ),
+  _Member(
+    name: 'Z',
+    roles: const ['原始成員'],
+    link: Uri.parse('https://github.com/yuzen9622'),
+    avatarUrl: 'https://avatars.githubusercontent.com/u/125567280?v=4',
+  ),
+  _Member(
+    name: 'q_nnn412',
+    roles: const ['原始成員'],
+    link: Uri.parse('https://github.com/NiaN0412'),
+  ),
 ];
 
-final _githubUri = Uri.parse(
-  'https://github.com/Twcat0503/2025Taipei-codefest-team30',
-);
+final _githubUri = Uri.parse('https://github.com/TESIIS/TESIIS');
 
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
@@ -106,7 +123,7 @@ class AboutPage extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '團隊 30',
+          '團隊 30「喵主餓餓女裝」',
           style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
       ],
@@ -200,7 +217,8 @@ class AboutPage extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 4,
                     children: [
-                      for (final role in member.roles) _buildRoleChip(context, role),
+                      for (final role in member.roles)
+                        _buildRoleChip(context, role),
                     ],
                   ),
                 ],
