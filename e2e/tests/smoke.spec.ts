@@ -165,15 +165,11 @@ test.describe('shelter web smoke', () => {
   });
 
   test('the app still loads on a throttled connection', async ({ page, context }) => {
-    // The Chinese search-bar text this test waits for can only paint once
-    // CanvasKit *and* the bundled NotoSansTC font (~12MB, confirmed via a
-    // network trace — canvaskit does its own text shaping with no
-    // browser-native font fallback) are both in. Neither nginx.conf's
-    // gzip_types nor a plain static server compresses that font — TTF has no
-    // MIME type in nginx by default, so it isn't on the gzip allowlist and
-    // ships at full size everywhere, this test included. Measured locally at
-    // a 6Mbps/150ms throttle: ~60-70s just for that one file. The timeout
-    // below has real margin over that, measured, not guessed.
+    // Flutter's first frame still waits for CanvasKit and the bundled
+    // Traditional-Chinese font. The static HTML shell gives immediate
+    // feedback while those assets load, and nginx now compresses the large
+    // TTF response. Keep a generous ceiling so this remains a regression
+    // guard on slower CI runners rather than a benchmark.
     test.setTimeout(150_000);
 
     // Network.emulateNetworkConditions is Chromium-only, which matches this
@@ -187,7 +183,8 @@ test.describe('shelter web smoke', () => {
       latency: 150,
     });
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('status')).toContainText('正在載入');
     await enableSemantics(page);
 
     await expect(page.getByText('TESIIS 臺灣避難收容所地圖')).toBeVisible({
