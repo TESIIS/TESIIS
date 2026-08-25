@@ -63,6 +63,7 @@ class ShelterMapViewModel extends ChangeNotifier {
     RequestPermission requestPermission = Geolocator.requestPermission,
     GetCurrentPosition getCurrentPosition = _defaultGetCurrentPosition,
     GetLastKnownPosition getLastKnownPosition = _defaultGetLastKnownPosition,
+    Duration locationPermissionTimeout = const Duration(seconds: 20),
     CacheGet cacheGet = RequestCache.get,
     CachePut cachePut = RequestCache.put,
   }) : _fetchClusters = fetchClusters,
@@ -73,6 +74,7 @@ class ShelterMapViewModel extends ChangeNotifier {
        _requestPermission = requestPermission,
        _getCurrentPosition = getCurrentPosition,
        _getLastKnownPosition = getLastKnownPosition,
+       _locationPermissionTimeout = locationPermissionTimeout,
        _cacheGet = cacheGet,
        _cachePut = cachePut;
 
@@ -84,6 +86,7 @@ class ShelterMapViewModel extends ChangeNotifier {
   final RequestPermission _requestPermission;
   final GetCurrentPosition _getCurrentPosition;
   final GetLastKnownPosition _getLastKnownPosition;
+  final Duration _locationPermissionTimeout;
   final CacheGet _cacheGet;
   final CachePut _cachePut;
 
@@ -239,7 +242,7 @@ class ShelterMapViewModel extends ChangeNotifier {
         _cachedAt = cached.cachedAt;
       } else {
         _clusters = const [];
-        _locationMessage = '無法連線到伺服器,請確認後端已啟動';
+        _locationMessage = '無法連線到伺服器，請確認後端已啟動';
         _isLocationSuccess = false;
       }
       notifyListeners();
@@ -506,11 +509,17 @@ class ShelterMapViewModel extends ChangeNotifier {
 
     var permission = await _checkPermission();
     if (permission == LocationPermission.denied) {
-      permission = await _requestPermission();
+      try {
+        permission = await _requestPermission().timeout(
+          _locationPermissionTimeout,
+        );
+      } on TimeoutException {
+        return '定位權限請求逾時，請重新點擊定位並完成權限選擇';
+      }
     }
     if (permission == LocationPermission.denied) return '定位權限被拒絕';
     if (permission == LocationPermission.deniedForever) {
-      return '定位權限被永久拒絕,請至設定中開啟';
+      return '定位權限被永久拒絕，請至設定中開啟';
     }
     return null;
   }
@@ -550,17 +559,17 @@ class ShelterMapViewModel extends ChangeNotifier {
 
       final position = await _getCurrentPosition();
       if (!_isValidPosition(position)) {
-        _locationMessage = '取得位置失敗: 無效的座標';
+        _locationMessage = '取得位置失敗：無效的座標';
         _isLocationSuccess = false;
         return;
       }
 
       await _applyLocatedPosition(position, requestedRadius);
     } on TimeoutException {
-      _locationMessage = '定位逾時,請確認訊號後再試一次';
+      _locationMessage = '定位逾時，請確認訊號後再試一次';
       _isLocationSuccess = false;
     } catch (e) {
-      _locationMessage = '無法取得位置: $e';
+      _locationMessage = '無法取得位置：$e';
       _isLocationSuccess = false;
     } finally {
       _isLoadingLocation = false;
@@ -604,7 +613,7 @@ class ShelterMapViewModel extends ChangeNotifier {
     }
 
     _locationMessage =
-        '已定位: ${position.latitude.toStringAsFixed(4)}, '
+        '已定位：${position.latitude.toStringAsFixed(4)}, '
         '${position.longitude.toStringAsFixed(4)}';
     _isLocationSuccess = true;
 
