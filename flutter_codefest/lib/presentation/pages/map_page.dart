@@ -48,11 +48,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   bool _isMapReady = false;
 
   /// The zoom `_handleLocate` wanted, when the fix arrived before the map had
-  /// laid out and the camera could not be driven yet. `initState` starts
-  /// locating immediately, so on a warm permission grant this is the normal
-  /// path, not the rare one: without it the map settled on the user's
-  /// position at the nationwide fallback zoom while the nearby panel was
-  /// already scoped to a 1.5 km radius.
+  /// laid out and the camera could not be driven yet.
   double? _pendingLocateZoom;
   Timer? _idleTimer;
 
@@ -71,7 +67,6 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   void initState() {
     super.initState();
     _viewModel = ShelterMapViewModel();
-    unawaited(_handleLocate());
   }
 
   @override
@@ -249,7 +244,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       await _viewModel.search(query);
     } catch (e) {
       debugPrint('搜尋失敗: $e');
-      _showSnackBar('搜尋失敗,請確認網路連線');
+      _showSnackBar('搜尋失敗，請確認網路連線');
     }
   }
 

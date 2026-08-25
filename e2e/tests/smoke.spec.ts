@@ -17,14 +17,6 @@ async function enableSemantics(page: Page, timeout = 30_000) {
   await enableButton.dispatchEvent('click');
 }
 
-// The navigate button only renders once the app has a known position
-// (`ShelterDetailSheet`'s `canNavigate` check) — grant geolocation so the
-// suite exercises the same path a real user with location enabled would.
-test.use({
-  permissions: ['geolocation'],
-  geolocation: { latitude: 25.0478, longitude: 121.517 },
-});
-
 /// Types [query] into the search field and waits until the app actually
 /// fires the search request.
 ///
@@ -68,8 +60,7 @@ async function searchShelters(page: Page, query: string) {
 /// Picks a shelter with a coordinate on record. Every row in the nationwide
 /// dataset has one today — the NFA point file ships its own WGS84 columns and
 /// rows failing the county bounds check are dropped — so this is a guard
-/// against that changing, not a workaround for a known gap. The nav-button
-/// test needs it: the button only renders for a shelter with coordinates.
+/// against that changing, not a workaround for a known gap.
 async function fetchSampleShelter(
   request: import('@playwright/test').APIRequestContext,
   baseURL: string,
@@ -121,7 +112,7 @@ test.describe('shelter web smoke', () => {
     });
   });
 
-  test('opening a shelter shows the navigation button', async ({ page, request, baseURL }) => {
+  test('opening a shelter shows navigation without geolocation', async ({ page, request, baseURL }) => {
     test.setTimeout(60_000);
 
     const sample = await fetchSampleShelter(request, baseURL!, '高雄市');
