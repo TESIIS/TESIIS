@@ -2,10 +2,17 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- viewport-fit=cover lets the page paint under a notched phone's rounded
+     corners; the safe-area insets on .wrap keep text out from under them. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>TESIIS 臺灣避難收容所地圖</title>
 <meta name="description" content="TESIIS 用地圖快速查詢全臺避難收容處所，查看最近設施、座標可信度，並可直接交給手機地圖 App 導航。整合內政部消防署全臺 22 縣市官方資料，開放原始碼、不需登入。" />
+<!-- The bare tag first, as the fallback for browsers that ignore `media`. The
+     header band is navy in light mode but collapses into the page ground in
+     dark, so the phone's browser chrome has to follow it. -->
 <meta name="theme-color" content="#161c27" />
+<meta name="theme-color" content="#161c27" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0f1319" media="(prefers-color-scheme: dark)" />
 <meta property="og:title" content="TESIIS 臺灣避難收容所地圖" />
 <meta property="og:description" content="用地圖快速查詢全臺避難收容處所，緊急時刻不再茫然。" />
 <meta property="og:type" content="website" />
@@ -49,6 +56,9 @@
 
     --maxw: 1120px;
     --pad: 24px;
+    /* The sticky bar's height. Anchor scrolling reads it too, so the two can
+       never drift apart when the bar shrinks on phones. */
+    --header-h: 68px;
 
     --font: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
       "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
@@ -80,6 +90,10 @@
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
+    /* Without this every in-page link parks its section heading *underneath*
+       the sticky header, so the reader lands on body copy with no idea which
+       section they asked for. */
+    scroll-padding-top: calc(var(--header-h) + 12px);
   }
 
   body {
@@ -91,6 +105,9 @@
     font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Android's default is an opaque grey box that squares off every pill and
+       rounded card on tap. */
+    -webkit-tap-highlight-color: rgba(229, 72, 77, .14);
   }
 
   img, svg { display: block; max-width: 100%; }
@@ -128,7 +145,14 @@
     width: 100%;
     max-width: var(--maxw);
     margin-inline: auto;
-    padding-inline: var(--pad);
+    /* max(), not a sum: the insets are 0 on every device without a notch and
+       in portrait on the ones that have one, so adding them would be a no-op
+       there while doubling the gutter in landscape, where space is tightest.
+       The 0px fallbacks are load-bearing — where the browser does not define
+       an inset, a bare env() makes the whole max() invalid and the gutter
+       collapses to nothing rather than to --pad. */
+    padding-left: max(var(--pad), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--pad), env(safe-area-inset-right, 0px));
   }
 
   /* ---------- Buttons ---------- */
@@ -187,6 +211,23 @@
 
   .btn-sm { padding: 9px 18px; font-size: .875rem; }
 
+  /* A touch browser leaves :hover applied to whatever you tapped last, so a
+     tapped card or button stays visibly lifted until you tap elsewhere. The
+     colour half of each hover state is fine there — it reads as a press —
+     but the lift is what makes it look stuck, so only that is withdrawn. */
+  @media (hover: none) {
+    .btn-primary:hover,
+    .btn-onnavy:hover,
+    .btn-quiet:hover,
+    .card:hover {
+      transform: none;
+    }
+    .card:hover {
+      box-shadow: var(--shadow-sm);
+      border-color: var(--border);
+    }
+  }
+
   /* ---------- Header ---------- */
 
   .site-header {
@@ -202,7 +243,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 20px;
-    height: 68px;
+    height: var(--header-h);
   }
 
   .brand {
@@ -253,6 +294,58 @@
   }
   .site-nav .btn { margin-left: 8px; }
 
+  /* ---------- Phone menu ---------- */
+
+  /* <details> rather than a button plus script: it carries the open/closed
+     state, the keyboard handling and the expanded/collapsed announcement on
+     its own, so the menu is fully usable with JavaScript off. The script at
+     the end of <body> only adds closing on tap-through and on outside tap. */
+  .navmenu {
+    display: none;
+    position: relative;
+  }
+  .navmenu > summary {
+    /* Both are needed to drop the disclosure triangle across browsers. */
+    list-style: none;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-pill);
+    color: rgba(255, 255, 255, .78);
+    cursor: pointer;
+    transition: background-color .18s ease, color .18s ease;
+  }
+  .navmenu > summary::-webkit-details-marker { display: none; }
+  .navmenu > summary svg { width: 22px; height: 22px; }
+  .navmenu[open] > summary {
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+  }
+
+  .navmenu-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    /* Anchored to the header's right edge, where the button is; a left-anchored
+       panel would run off the screen. */
+    right: 0;
+    min-width: 188px;
+    padding: 8px;
+    display: grid;
+    border-radius: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+  }
+  .navmenu-panel a {
+    padding: 12px 14px;
+    border-radius: 10px;
+    color: var(--text);
+    font-size: .95rem;
+    font-weight: 600;
+  }
+  .navmenu-panel a:active { background: var(--surface-alt); }
+
   /* ---------- Hero ---------- */
 
   .hero {
@@ -294,7 +387,10 @@
     grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
     gap: 56px;
     align-items: center;
-    padding: 80px 0 72px;
+    /* padding-block, never the shorthand: .hero-grid shares its element with
+       .wrap and wins the cascade, so a shorthand here wipes out the page
+       gutter and runs the headline into the edge of the screen. */
+    padding-block: 80px 72px;
   }
 
   .pill {
@@ -689,7 +785,9 @@
     background: radial-gradient(circle, rgba(229, 72, 77, .26), transparent 62%);
   }
   .cta .wrap {
-    padding: 92px var(--pad);
+    /* padding-block, not the shorthand — the shorthand would reset the
+       safe-area gutters .wrap sets on the inline sides. */
+    padding-block: 92px;
     text-align: center;
   }
   .cta h2 {
@@ -766,7 +864,7 @@
     .hero-grid {
       grid-template-columns: 1fr;
       gap: 48px;
-      padding: 60px 0 64px;
+      padding-block: 60px 64px;
       text-align: center;
     }
     .hero .lead { margin-inline: auto; }
@@ -780,11 +878,32 @@
     .cards, .steps { grid-template-columns: repeat(2, 1fr); }
     .step:not(:last-child)::after { display: none; }
     .site-nav .navlink { display: none; }
+    .navmenu { display: block; }
     section.band { padding: 72px 0; }
+
+    /* With the text nav gone, the CTA is carrying full desktop padding and
+       glow next to the burger with nothing to balance it against, so it reads
+       as oversized for a 60px bar. padding-block here deliberately overrides
+       the pointer:coarse rule below (44px tap target) — a pill that tall
+       reaches nearly edge-to-edge of the bar, which is what read as bloated. */
+    .site-nav .btn-sm {
+      padding-block: 9px;
+      padding-inline: 14px;
+      font-size: .82rem;
+    }
+    .site-nav .btn-primary {
+      box-shadow: 0 1px 2px rgba(229, 72, 77, .28), 0 4px 10px rgba(229, 72, 77, .3);
+    }
+    /* Matches the CTA's new scale so neither control dominates the other. */
+    .navmenu > summary { width: 38px; height: 38px; }
+    .navmenu > summary svg { width: 20px; height: 20px; }
   }
 
   @media (max-width: 620px) {
-    :root { --pad: 20px; }
+    :root {
+      --pad: 20px;
+      --header-h: 60px;
+    }
     .cards, .steps { grid-template-columns: 1fr; }
     .stats .wrap { grid-template-columns: repeat(2, 1fr); }
     /* Two columns: the left cell of each row starts the row, and the second
@@ -794,9 +913,81 @@
     .stats .stat:nth-child(n + 3) { border-top: 1px solid rgba(255, 255, 255, .1); }
     .brand .brand-sub { display: none; }
     .notice { flex-direction: column; gap: 16px; padding: 24px; }
-    .cta .wrap { padding: 68px var(--pad); }
-    .footer-links { grid-template-columns: 1fr; }
+    .cta .wrap { padding-block: 68px; }
     .hero-cta .btn { flex: 1 1 100%; }
+
+    /* Everything below tightens the page's vertical rhythm. The desktop
+       spacing is tuned for a viewport three times as tall, and carried over
+       unchanged it turned each section into its own near-empty screen. */
+    section.band { padding: 60px 0; }
+    .sec-head { margin-bottom: 40px; }
+    .hero-grid { gap: 34px; padding-block: 44px 52px; }
+    .hero .lead { margin-top: 18px; font-size: 1rem; }
+    .hero-cta { margin-top: 28px; gap: 12px; }
+
+    /* The note wraps to two lines on the narrowest phones, and as a centered
+       flex row that leaves the shield hanging off to the left of the block.
+       Flowing it inline keeps it attached to the first line instead. */
+    .hero-note {
+      display: block;
+      text-align: center;
+    }
+    .hero-note svg {
+      display: inline-block;
+      vertical-align: -2px;
+      margin-right: 6px;
+    }
+    .card { padding: 24px 22px 26px; }
+    .card .ico { margin-bottom: 16px; }
+    .step { padding: 26px 22px; }
+    .site-footer { padding: 44px 0 32px; }
+    .footer-top { gap: 24px; padding-bottom: 24px; }
+
+    /* The card stops floating over the island and stacks under it. At the
+       height the art shrinks to below, an overlaid card covered close to half
+       the map, which left neither the card nor the map legible. */
+    .map-art { flex-direction: column; gap: 18px; }
+    .taiwan { height: clamp(250px, 64vw, 320px); }
+    .result-card {
+      position: static;
+      translate: none;
+      width: min(320px, 100%);
+    }
+
+    .footer-links {
+      grid-template-columns: 1fr;
+      gap: 2px;
+    }
+  }
+
+  /* Small phones (iPhone SE and similar, 375px and under). The gutter is the
+     first thing to give: at 20px a side it costs 11% of the screen. */
+  @media (max-width: 380px) {
+    :root { --pad: 16px; }
+    .brand { font-size: 1rem; gap: 9px; }
+    .brand img { width: 30px; height: 30px; }
+    .stats .stat { padding: 20px 14px; }
+    .btn { padding-inline: 18px; }
+  }
+
+  /* Phone held sideways. The hero is laid out for a tall screen, and at this
+     height its padding alone pushed the headline off the first view. */
+  @media (max-height: 520px) and (orientation: landscape) {
+    .hero-grid { padding-block: 36px 40px; gap: 28px; }
+    .taiwan { height: 230px; }
+    section.band { padding: 52px 0; }
+    .cta .wrap { padding-block: 56px; }
+  }
+
+  /* Sized for a finger rather than a cursor. Keyed off the pointer and not the
+     viewport, because the same phone is 844px wide in landscape and would miss
+     a width-based rule while still being driven by a thumb. 44px is the
+     smallest target that gets hit reliably; the header CTA and the footer link
+     rows both land well under that at their desktop sizes. */
+  @media (pointer: coarse) {
+    .btn-sm { padding-block: 13px; }
+    .navlink { padding-block: 12px; }
+    .footer-links a { padding-block: 11px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -823,6 +1014,21 @@
       <a class="navlink" href="#how">怎麼用</a>
       <a class="navlink" href="#data">資料來源</a>
       <a class="btn btn-primary btn-sm" href="/app/">進入服務</a>
+
+      <!-- Same three destinations as the inline links above, which are hidden
+           on phones. Before this the nav simply disappeared below 940px and
+           the only way to reach a section was to scroll the whole page. -->
+      <details class="navmenu">
+        <summary aria-label="開啟選單">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </summary>
+        <div class="navmenu-panel">
+          <a href="#features">功能</a>
+          <a href="#how">怎麼用</a>
+          <a href="#data">資料來源</a>
+          <a href="#about">關於 TESIIS</a>
+        </div>
+      </details>
     </nav>
   </div>
 </header>
@@ -840,7 +1046,7 @@
         </h1>
 
         <p class="lead">
-          TESIIS 把內政部消防署的全臺避難收容處所搬上地圖。開啟就能查，定位後馬上列出最近的設施，選定後一鍵交給手機地圖導航。不必註冊、不必安裝。
+          TESIIS 把內政部消防署的全臺避難收容處所搬上地圖。開啟就能查，定位後馬上列出最近的設施，選定後一鍵交給手機地圖導航
         </p>
 
         <div class="hero-cta">
@@ -853,11 +1059,6 @@
             原始碼
           </a>
         </div>
-
-        <p class="hero-note">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          不需登入、不蒐集個人資料，定位只留在你的裝置上
-        </p>
       </div>
 
       <div class="map-art">
@@ -1075,6 +1276,33 @@
     </div>
   </div>
 </footer>
+
+<script>
+  // Progressive enhancement only. <details> already opens and closes itself;
+  // what it cannot do is close after you tap through to a section, or when you
+  // tap somewhere else — both of which leave the panel covering the page on a
+  // phone. With this file blocked or JS off, the menu still works, it just
+  // waits for a second tap on the button.
+  (function () {
+    var menu = document.querySelector('.navmenu');
+    if (!menu) return;
+
+    menu.addEventListener('click', function (event) {
+      if (event.target.closest('.navmenu-panel a')) menu.open = false;
+    });
+
+    document.addEventListener('click', function (event) {
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && menu.open) {
+        menu.open = false;
+        menu.querySelector('summary').focus();
+      }
+    });
+  })();
+</script>
 
 </body>
 </html>
