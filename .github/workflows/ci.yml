@@ -259,7 +259,7 @@ jobs:
           GITLEAKS_VERSION: 8.18.4
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error \
+          curl --fail --location --silent --show-error --retry 5 --retry-all-errors \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             --output /tmp/gitleaks.tar.gz
           tar --extract --gzip --file /tmp/gitleaks.tar.gz --directory /tmp
