@@ -77,6 +77,9 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   void initState() {
     super.initState();
     _viewModel = ShelterMapViewModel();
+    // 一載入就自動定位：_pendingLocateZoom 會在 map 尚未 ready 時
+    // 保留想要的縮放，等 _onMapReady 再移動鏡頭。
+    unawaited(_handleLocate());
   }
 
   @override
