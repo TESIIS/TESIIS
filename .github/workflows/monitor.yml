@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
 
           deployed_sha=$(curl --fail --silent --show-error --max-time 10 \
-            --header 'Cache-Control: no-cache' "$PROD_URL/build-info.json" \
+            --header 'Cache-Control: no-cache' "$PROD_URL/app/build-info.json" \
             | jq -r '.sha')
           expected_sha=$(git rev-parse HEAD)
 
