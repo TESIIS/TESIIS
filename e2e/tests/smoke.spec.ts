@@ -87,9 +87,30 @@ test.describe('shelter web smoke', () => {
     await expect(cta).toBeVisible();
     await expect(cta).toHaveAttribute('href', '/app/');
 
+    // The landing page deliberately follows the app's fixed light theme rather
+    // than switching palettes with the operating system.
+    const themeColor = page.locator('meta[name="theme-color"]');
+    await expect(themeColor).toHaveCount(1);
+    await expect(themeColor).toHaveAttribute('content', '#f7fbfc');
+
     // The landing page must not pull in the Flutter bundle — that is the whole
     // point of splitting it out from the app at /app/.
     await expect(page.locator('script[src*="flutter"]')).toHaveCount(0);
+  });
+
+  test('landing mobile menu opens and navigates to its section', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+
+    const menu = page.locator('.navmenu');
+    await expect(menu).toBeVisible();
+    await menu.locator('summary').click();
+
+    const dataLink = menu.getByRole('link', { name: '資料來源' });
+    await expect(dataLink).toBeVisible();
+    await dataLink.click();
+    await expect(page).toHaveURL(/\/#data$/);
+    await expect(menu).not.toHaveAttribute('open', '');
   });
 
   test('homepage loads and the map renders', async ({ page }) => {
@@ -106,6 +127,22 @@ test.describe('shelter web smoke', () => {
     await expect(page.getByText('TESIIS 臺灣避難收容所地圖')).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test('mobile loader uses a map sheet while Flutter initializes', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    // Keep the boot script from removing the native HTML loader so this test
+    // can inspect the responsive first-paint experience deterministically.
+    await page.route('**/flutter_bootstrap.js', (route) =>
+      route.fulfill({ contentType: 'application/javascript', body: '' }),
+    );
+    await page.goto('/app/');
+
+    const loader = page.locator('#app-loading');
+    await expect(loader).toBeVisible();
+    await expect(loader.locator('.app-loading__map')).toBeVisible();
+    await expect(loader.locator('.app-loading__panel')).toHaveCSS('min-height', '280px');
+    await expect(loader.getByText('正在載入地圖與避難所資料…')).toBeVisible();
   });
 
   test('search returns results for a real shelter', async ({ page, request, baseURL }) => {

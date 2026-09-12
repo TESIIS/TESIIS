@@ -7,12 +7,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>TESIIS 臺灣避難收容所地圖</title>
 <meta name="description" content="TESIIS 用地圖快速查詢全臺避難收容處所，查看最近設施、座標可信度，並可直接交給手機地圖 App 導航。整合內政部消防署全臺 22 縣市官方資料，開放原始碼、不需登入。" />
-<!-- The bare tag first, as the fallback for browsers that ignore `media`. The
-     header band is navy in light mode but collapses into the page ground in
-     dark, so the phone's browser chrome has to follow it. -->
-<meta name="theme-color" content="#161c27" />
-<meta name="theme-color" content="#161c27" media="(prefers-color-scheme: light)" />
-<meta name="theme-color" content="#0f1319" media="(prefers-color-scheme: dark)" />
+<!-- Keep browser chrome aligned with the fixed light Material surface. -->
+<meta name="theme-color" content="#f7fbfc" />
 <meta property="og:title" content="TESIIS 臺灣避難收容所地圖" />
 <meta property="og:description" content="用地圖快速查詢全臺避難收容處所，緊急時刻不再茫然。" />
 <meta property="og:type" content="website" />
@@ -20,39 +16,31 @@
 <link rel="apple-touch-icon" href="assets/logo.png" />
 <style>
   :root {
-    /* One tone for every dark band — header, hero, closing CTA, footer. They
-       used to be three near-identical navies, which read as sloppy rather
-       than as separate sections. */
-    --band: #161c27;
-    /* Hairline between two dark bands that meet (footer under the CTA). Always
-       visible, because both sides are dark in either colour scheme. */
-    --band-line: rgba(255, 255, 255, .09);
-    /* Edge where a dark band meets the page ground. In light mode the colour
-       change already separates them, so this stays invisible; in dark mode the
-       band and the ground are the same tone and it does the whole job. */
-    --band-edge: transparent;
+    /* Mirrors the Material 3 tonal hierarchy generated from the Flutter
+       app's #5AB4C5 seed, without making the landing page load the app bundle. */
+    --primary: #006874;
+    --primary-hover: #005762;
+    --on-primary: #ffffff;
+    --primary-container: #a6effd;
+    --on-primary-container: #004e58;
+    --surface: #fbfcfc;
+    --surface-alt: #edf3f4;
+    --surface-container: #e8eeee;
+    --border: #d4dcdd;
+    --text: #171d1e;
+    --muted: #526567;
+    --warning: #785900;
+    --warning-container: #ffdf9d;
+    --success: #146c43;
+    --success-container: #b8f3ce;
 
-    --red: #e5484d;
-    --red-hover: #cf3c41;
-    --amber: #f5c451;
-    /* "good state" accent: the live dot and the coordinate-quality tag. The
-       tag needs a darker shade to clear contrast on a white card. */
-    --green: #4ade80;
-    --green-ink: #16955c;
-
-    --bg: #f7f8fa;
-    --surface: #ffffff;
-    --surface-alt: #f1f3f7;
-    --border: #e4e8ef;
-    --text: #171d29;
-    --muted: #5c6675;
-
-    --r-md: 16px;
+    --r-md: 12px;
+    --r-lg: 20px;
     --r-pill: 999px;
 
-    --shadow-sm: 0 1px 2px rgba(18, 23, 31, .06), 0 4px 12px rgba(18, 23, 31, .05);
-    --shadow-md: 0 2px 4px rgba(18, 23, 31, .06), 0 12px 32px rgba(18, 23, 31, .08);
-    --shadow-lg: 0 24px 60px rgba(18, 23, 31, .18);
+    --shadow-sm: 0 2px 6px rgba(22, 37, 39, .14);
+    --shadow-md: 0 4px 12px rgba(22, 37, 39, .16);
+    --shadow-lg: 0 10px 28px rgba(22, 37, 39, .2);
 
     --maxw: 1120px;
     --pad: 24px;
@@ -60,29 +48,8 @@
        never drift apart when the bar shrinks on phones. */
     --header-h: 68px;
 
-    --font: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
+    --font: "Noto Sans TC", -apple-system, BlinkMacSystemFont, "PingFang TC",
       "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0f1319;
-      /* The bands collapse into the page ground here. Keeping the navy would
-         leave the hero and footer sitting *lighter* than the page between
-         them, so scrolling read as a series of unrelated slabs. */
-      --band: #0f1319;
-      --band-edge: rgba(255, 255, 255, .07);
-
-      --surface: #171d26;
-      --surface-alt: #1b222c;
-      --border: #262e3b;
-      --text: #e8ecf3;
-      --muted: #99a3b3;
-
-      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 12px rgba(0, 0, 0, .25);
-      --shadow-md: 0 2px 4px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
-      --shadow-lg: 0 24px 60px rgba(0, 0, 0, .5);
-    }
   }
 
   *, *::before, *::after { box-sizing: border-box; }
@@ -99,7 +66,7 @@
   body {
     margin: 0;
     font-family: var(--font);
-    background: var(--bg);
+    background: var(--surface);
     color: var(--text);
     line-height: 1.75;
     font-size: 16px;
@@ -107,7 +74,7 @@
     -moz-osx-font-smoothing: grayscale;
     /* Android's default is an opaque grey box that squares off every pill and
        rounded card on tap. */
-    -webkit-tap-highlight-color: rgba(229, 72, 77, .14);
+    -webkit-tap-highlight-color: rgba(0, 104, 116, .16);
   }
 
   img, svg { display: block; max-width: 100%; }
@@ -133,10 +100,10 @@
     white-space: nowrap;
   }
 
-  ::selection { background: rgba(229, 72, 77, .22); }
+  ::selection { background: var(--primary-container); }
 
   :focus-visible {
-    outline: 2px solid var(--red);
+    outline: 2px solid var(--primary);
     outline-offset: 3px;
     border-radius: 4px;
   }
@@ -163,7 +130,7 @@
     justify-content: center;
     gap: 8px;
     padding: 12px 24px;
-    border-radius: var(--r-pill);
+    border-radius: 10px;
     font-weight: 700;
     font-size: .95rem;
     line-height: 1.2;
@@ -175,26 +142,25 @@
   }
 
   .btn-primary {
-    background: var(--red);
-    color: #fff;
-    box-shadow: 0 1px 2px rgba(229, 72, 77, .3), 0 8px 24px rgba(229, 72, 77, .32);
+    background: var(--primary);
+    color: var(--on-primary);
+    box-shadow: 0 2px 6px rgba(0, 104, 116, .28);
   }
   .btn-primary:hover {
-    background: var(--red-hover);
+    background: var(--primary-hover);
     transform: translateY(-2px);
-    box-shadow: 0 2px 4px rgba(229, 72, 77, .3), 0 14px 32px rgba(229, 72, 77, .4);
+    box-shadow: 0 4px 12px rgba(0, 104, 116, .32);
   }
   .btn-primary:active { transform: translateY(0); }
 
   .btn-onnavy {
-    background: rgba(255, 255, 255, .07);
-    color: #fff;
-    border-color: rgba(255, 255, 255, .22);
-    backdrop-filter: blur(6px);
+    background: transparent;
+    color: var(--primary);
+    border-color: var(--primary);
   }
   .btn-onnavy:hover {
-    background: rgba(255, 255, 255, .13);
-    border-color: rgba(255, 255, 255, .42);
+    background: var(--primary-container);
+    border-color: var(--primary);
     transform: translateY(-2px);
   }
 
@@ -234,8 +200,10 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    background: var(--band);
-    border-bottom: 1px solid var(--band-edge);
+    background: rgba(251, 252, 252, .94);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(22, 37, 39, .08);
+    backdrop-filter: blur(12px);
   }
 
   .site-header .wrap {
@@ -250,7 +218,7 @@
     display: inline-flex;
     align-items: center;
     gap: 11px;
-    color: #fff;
+    color: var(--primary);
     font-weight: 800;
     font-size: 1.06rem;
     letter-spacing: -0.01em;
@@ -260,19 +228,16 @@
     width: 34px;
     height: 34px;
     border-radius: 9px;
-    /* The mark's own ground is the same navy as the header, so without a rim
-       it dissolves into the bar and reads as a smudge. */
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14),
-      0 2px 8px rgba(0, 0, 0, .35);
+    box-shadow: 0 2px 6px rgba(0, 104, 116, .2);
   }
   .brand .brand-sub {
     font-weight: 500;
     font-size: .82rem;
-    color: rgba(255, 255, 255, .55);
+    color: var(--muted);
     letter-spacing: 0;
     padding-left: 11px;
     margin-left: 1px;
-    border-left: 1px solid rgba(255, 255, 255, .16);
+    border-left: 1px solid var(--border);
   }
 
   .site-nav {
@@ -281,16 +246,16 @@
     gap: 8px;
   }
   .site-nav .navlink {
-    color: rgba(255, 255, 255, .7);
+    color: var(--muted);
     font-size: .9rem;
     font-weight: 500;
     padding: 8px 14px;
-    border-radius: var(--r-pill);
+    border-radius: 8px;
     transition: color .18s ease, background-color .18s ease;
   }
   .site-nav .navlink:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, .08);
+    color: var(--primary);
+    background: var(--primary-container);
   }
   .site-nav .btn { margin-left: 8px; }
 
@@ -311,16 +276,16 @@
     place-items: center;
     width: 44px;
     height: 44px;
-    border-radius: var(--r-pill);
-    color: rgba(255, 255, 255, .78);
+    border-radius: 10px;
+    color: var(--primary);
     cursor: pointer;
     transition: background-color .18s ease, color .18s ease;
   }
   .navmenu > summary::-webkit-details-marker { display: none; }
   .navmenu > summary svg { width: 22px; height: 22px; }
   .navmenu[open] > summary {
-    background: rgba(255, 255, 255, .12);
-    color: #fff;
+    background: var(--primary-container);
+    color: var(--on-primary-container);
   }
 
   .navmenu-panel {
@@ -350,11 +315,11 @@
 
   .hero {
     position: relative;
-    background: var(--band);
-    color: #fff;
+    background: linear-gradient(180deg, #f7fbfc 0%, #edf6f7 100%);
+    color: var(--text);
     overflow: hidden;
     isolation: isolate;
-    border-bottom: 1px solid var(--band-edge);
+    border-bottom: 1px solid var(--border);
   }
 
   .hero::before,
@@ -365,13 +330,13 @@
     border-radius: 50%;
     pointer-events: none;
   }
-  /* warm glow behind the map */
+   /* Tonal layers evoke the map canvas without competing with the content. */
   .hero::before {
     width: 780px;
     height: 780px;
     top: -240px;
     right: -180px;
-    background: radial-gradient(circle, rgba(229, 72, 77, .20), transparent 62%);
+    background: radial-gradient(circle, rgba(90, 180, 197, .22), transparent 62%);
   }
   /* cool lift on the copy side */
   .hero::after {
@@ -379,7 +344,7 @@
     height: 640px;
     bottom: -320px;
     left: -220px;
-    background: radial-gradient(circle, rgba(96, 140, 200, .16), transparent 65%);
+    background: radial-gradient(circle, rgba(166, 239, 253, .5), transparent 65%);
   }
 
   .hero-grid {
@@ -399,11 +364,11 @@
     gap: 9px;
     padding: 7px 16px 7px 10px;
     border-radius: var(--r-pill);
-    background: rgba(255, 255, 255, .07);
-    border: 1px solid rgba(255, 255, 255, .14);
+    background: var(--surface);
+    border: 1px solid var(--border);
     font-size: .82rem;
     font-weight: 600;
-    color: rgba(255, 255, 255, .88);
+    color: var(--on-primary-container);
     letter-spacing: .01em;
   }
   .pill .live {
@@ -411,7 +376,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: var(--green);
+    background: var(--success);
     flex: none;
     margin-left: 4px;
   }
@@ -420,7 +385,7 @@
     position: absolute;
     inset: -4px;
     border-radius: 50%;
-    border: 1px solid var(--green);
+    border: 1px solid var(--success);
     opacity: .6;
     animation: ripple 2.4s ease-out infinite;
   }
@@ -432,16 +397,14 @@
     letter-spacing: -0.025em;
   }
   .hero h1 .accent {
-    color: var(--red);
-    /* keeps the highlighted line readable against the dark ground */
-    text-shadow: 0 0 40px rgba(229, 72, 77, .5);
+    color: var(--primary);
   }
 
   .hero .lead {
     margin-top: 22px;
     font-size: 1.06rem;
     line-height: 1.85;
-    color: rgba(255, 255, 255, .68);
+    color: var(--muted);
     max-width: 44ch;
   }
 
@@ -455,7 +418,7 @@
   .hero-note {
     margin-top: 22px;
     font-size: .84rem;
-    color: rgba(255, 255, 255, .42);
+    color: var(--muted);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -469,6 +432,15 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    min-height: 460px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background-color: #e8f2f3;
+    background-image: linear-gradient(rgba(0, 104, 116, .08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 104, 116, .08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    box-shadow: var(--shadow-md);
   }
 
   .map-art .halo {
@@ -476,7 +448,7 @@
     width: 108%;
     aspect-ratio: 1;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(229, 72, 77, .14), transparent 60%);
+    background: radial-gradient(circle, rgba(0, 104, 116, .17), transparent 60%);
     pointer-events: none;
   }
 
@@ -493,10 +465,10 @@
 
   /* `r` stays an attribute on each circle — it is a geometry attribute, and
      support for it as a CSS property is too recent to rely on here. */
-  .taiwan .pin-dot { fill: var(--red); }
+  .taiwan .pin-dot { fill: var(--primary); }
   .taiwan .pin-ring {
     fill: none;
-    stroke: var(--red);
+    stroke: var(--primary);
     stroke-width: 1.6;
     transform-box: fill-box;
     transform-origin: center;
@@ -539,8 +511,8 @@
     width: 38px;
     height: 38px;
     border-radius: 11px;
-    background: rgba(229, 72, 77, .12);
-    color: var(--red);
+    background: var(--primary-container);
+    color: var(--primary);
     display: grid;
     place-items: center;
   }
@@ -563,19 +535,16 @@
     margin-top: 8px;
     padding: 3px 9px;
     border-radius: var(--r-pill);
-    background: rgba(74, 222, 128, .14);
-    color: var(--green-ink);
+    background: var(--success-container);
+    color: var(--success);
     font-size: .72rem;
     font-weight: 700;
   }
-  @media (prefers-color-scheme: dark) {
-    .result-card .tag { color: var(--green); }
-  }
-
   /* ---------- Stat band ---------- */
 
   .stats {
-    border-top: 1px solid rgba(255, 255, 255, .1);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
   }
   .stats .wrap {
     display: grid;
@@ -586,7 +555,7 @@
      side padding instead of running to the viewport edge on narrow screens. */
   .stats .stat {
     padding: 30px 26px;
-    border-left: 1px solid rgba(255, 255, 255, .1);
+    border-left: 1px solid var(--border);
   }
   .stats .stat:first-child {
     border-left: 0;
@@ -599,12 +568,13 @@
     letter-spacing: -0.03em;
     line-height: 1.15;
     font-variant-numeric: tabular-nums;
+    color: var(--primary);
   }
   .stats .stat span {
     display: block;
     margin-top: 5px;
     font-size: .84rem;
-    color: rgba(255, 255, 255, .5);
+    color: var(--muted);
   }
 
   /* ---------- Sections ---------- */
@@ -624,7 +594,7 @@
     font-size: .8rem;
     font-weight: 800;
     letter-spacing: .14em;
-    color: var(--red);
+    color: var(--primary);
     text-transform: uppercase;
     margin-bottom: 14px;
   }
@@ -654,14 +624,14 @@
   .card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-md);
-    border-color: transparent;
+    border-color: var(--primary);
   }
   .card .ico {
     width: 46px;
     height: 46px;
     border-radius: 13px;
-    background: rgba(229, 72, 77, .1);
-    color: var(--red);
+    background: var(--primary-container);
+    color: var(--primary);
     display: grid;
     place-items: center;
     margin-bottom: 20px;
@@ -697,15 +667,12 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: var(--band);
-    color: #fff;
+    background: var(--primary);
+    color: var(--on-primary);
     font-weight: 800;
     font-size: 1rem;
     font-variant-numeric: tabular-nums;
     margin-bottom: 18px;
-  }
-  @media (prefers-color-scheme: dark) {
-    .step .num { background: var(--red); }
   }
   .step h3 { font-size: 1.02rem; font-weight: 700; }
   .step p {
@@ -737,7 +704,7 @@
     border-radius: var(--r-md);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-left: 4px solid var(--amber);
+    border-left: 4px solid var(--warning);
     box-shadow: var(--shadow-sm);
   }
   .notice .ico {
@@ -745,13 +712,10 @@
     width: 42px;
     height: 42px;
     border-radius: 50%;
-    background: rgba(245, 196, 81, .18);
-    color: #a97a09;
+    background: var(--warning-container);
+    color: var(--warning);
     display: grid;
     place-items: center;
-  }
-  @media (prefers-color-scheme: dark) {
-    .notice .ico { color: var(--amber); }
   }
   .notice .ico svg { width: 21px; height: 21px; }
   .notice h3 { font-size: 1.04rem; font-weight: 700; }
@@ -766,11 +730,10 @@
 
   .cta {
     position: relative;
-    background: var(--band);
-    color: #fff;
+    background: var(--primary);
+    color: var(--on-primary);
     overflow: hidden;
     isolation: isolate;
-    border-top: 1px solid var(--band-edge);
   }
   .cta::before {
     content: "";
@@ -782,7 +745,7 @@
     width: min(900px, 140%);
     height: 560px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(229, 72, 77, .26), transparent 62%);
+    background: radial-gradient(circle, rgba(166, 239, 253, .32), transparent 62%);
   }
   .cta .wrap {
     /* padding-block, not the shorthand — the shorthand would reset the
@@ -797,7 +760,7 @@
   }
   .cta p {
     margin-top: 18px;
-    color: rgba(255, 255, 255, .64);
+    color: rgba(255, 255, 255, .82);
     font-size: 1.04rem;
     max-width: 48ch;
     margin-inline: auto;
@@ -809,15 +772,27 @@
     gap: 14px;
     margin-top: 34px;
   }
+  .cta .btn-primary {
+    background: var(--surface);
+    color: var(--primary);
+    box-shadow: none;
+  }
+  .cta .btn-primary:hover { background: var(--surface-alt); }
+  .cta .btn-onnavy {
+    color: var(--on-primary);
+    border-color: rgba(255, 255, 255, .72);
+  }
+  .cta .btn-onnavy:hover {
+    background: rgba(255, 255, 255, .14);
+    border-color: var(--on-primary);
+  }
 
   /* ---------- Footer ---------- */
 
   .site-footer {
-    background: var(--band);
-    /* The CTA above is the same tone in both schemes, so this edge is the only
-       thing marking where the footer starts. */
-    border-top: 1px solid var(--band-line);
-    color: rgba(255, 255, 255, .62);
+    background: var(--surface-container);
+    border-top: 1px solid var(--border);
+    color: var(--muted);
     padding: 56px 0 40px;
     font-size: .9rem;
   }
@@ -828,12 +803,12 @@
     flex-wrap: wrap;
     gap: 32px;
     padding-bottom: 30px;
-    border-bottom: 1px solid rgba(255, 255, 255, .09);
+    border-bottom: 1px solid var(--border);
   }
   .footer-top .about {
     max-width: 34ch;
     margin-top: 14px;
-    color: rgba(255, 255, 255, .45);
+    color: var(--muted);
     font-size: .86rem;
     line-height: 1.75;
   }
@@ -843,10 +818,10 @@
     gap: 10px 48px;
   }
   .footer-links a {
-    color: rgba(255, 255, 255, .62);
+    color: var(--muted);
     transition: color .18s ease;
   }
-  .footer-links a:hover { color: #fff; }
+  .footer-links a:hover { color: var(--primary); }
   .footer-bottom {
     margin-top: 26px;
     display: flex;
@@ -854,7 +829,7 @@
     flex-wrap: wrap;
     gap: 12px;
     font-size: .82rem;
-    color: rgba(255, 255, 255, .38);
+    color: var(--muted);
     line-height: 1.7;
   }
 
@@ -892,7 +867,7 @@
       font-size: .82rem;
     }
     .site-nav .btn-primary {
-      box-shadow: 0 1px 2px rgba(229, 72, 77, .28), 0 4px 10px rgba(229, 72, 77, .3);
+      box-shadow: 0 1px 2px rgba(0, 104, 116, .22), 0 4px 10px rgba(0, 104, 116, .24);
     }
     /* Matches the CTA's new scale so neither control dominates the other. */
     .navmenu > summary { width: 38px; height: 38px; }
@@ -910,7 +885,7 @@
        row needs a rule above it that the 4-across layout never had. */
     .stats .stat { padding: 24px 20px; }
     .stats .stat:nth-child(odd) { border-left: 0; padding-left: 0; }
-    .stats .stat:nth-child(n + 3) { border-top: 1px solid rgba(255, 255, 255, .1); }
+    .stats .stat:nth-child(n + 3) { border-top: 1px solid var(--border); }
     .brand .brand-sub { display: none; }
     .notice { flex-direction: column; gap: 16px; padding: 24px; }
     .cta .wrap { padding-block: 68px; }
@@ -1070,8 +1045,8 @@
                  default would paint all 532 dots identically. -->
             <linearGradient id="tw-land" gradientUnits="userSpaceOnUse"
                             x1="0" y1="392" x2="210" y2="0">
-              <stop offset="0" stop-color="#fff" stop-opacity=".2" />
-              <stop offset="1" stop-color="#fff" stop-opacity=".46" />
+              <stop offset="0" stop-color="#5ab4c5" stop-opacity=".3" />
+              <stop offset="1" stop-color="#006874" stop-opacity=".72" />
             </linearGradient>
           </defs>
           <g class="land" fill="url(#tw-land)"><circle cx="148.5" cy="11.8" r="3.4"/><circle cx="157.5" cy="11.8" r="3.4"/><circle cx="166.5" cy="11.8" r="3.4"/><circle cx="135" cy="19.6" r="3.4"/><circle cx="144" cy="19.6" r="3.4"/><circle cx="153" cy="19.6" r="3.4"/><circle cx="162" cy="19.6" r="3.4"/><circle cx="171" cy="19.6" r="3.4"/><circle cx="180" cy="19.6" r="3.4"/><circle cx="130.5" cy="27.4" r="3.4"/><circle cx="139.5" cy="27.4" r="3.4"/><circle cx="148.5" cy="27.4" r="3.4"/><circle cx="157.5" cy="27.4" r="3.4"/><circle cx="166.5" cy="27.4" r="3.4"/><circle cx="175.5" cy="27.4" r="3.4"/><circle cx="184.5" cy="27.4" r="3.4"/><circle cx="117" cy="35.2" r="3.4"/><circle cx="126" cy="35.2" r="3.4"/><circle cx="135" cy="35.2" r="3.4"/><circle cx="144" cy="35.2" r="3.4"/><circle cx="153" cy="35.2" r="3.4"/><circle cx="162" cy="35.2" r="3.4"/><circle cx="171" cy="35.2" r="3.4"/><circle cx="180" cy="35.2" r="3.4"/><circle cx="189" cy="35.2" r="3.4"/><circle cx="103.5" cy="43" r="3.4"/><circle cx="112.5" cy="43" r="3.4"/><circle cx="121.5" cy="43" r="3.4"/><circle cx="130.5" cy="43" r="3.4"/><circle cx="139.5" cy="43" r="3.4"/><circle cx="148.5" cy="43" r="3.4"/><circle cx="157.5" cy="43" r="3.4"/><circle cx="166.5" cy="43" r="3.4"/><circle cx="175.5" cy="43" r="3.4"/><circle cx="184.5" cy="43" r="3.4"/><circle cx="193.5" cy="43" r="3.4"/><circle cx="99" cy="50.8" r="3.4"/><circle cx="108" cy="50.8" r="3.4"/><circle cx="117" cy="50.8" r="3.4"/><circle cx="126" cy="50.8" r="3.4"/><circle cx="135" cy="50.8" r="3.4"/><circle cx="144" cy="50.8" r="3.4"/><circle cx="153" cy="50.8" r="3.4"/><circle cx="162" cy="50.8" r="3.4"/><circle cx="171" cy="50.8" r="3.4"/><circle cx="180" cy="50.8" r="3.4"/><circle cx="189" cy="50.8" r="3.4"/><circle cx="94.5" cy="58.6" r="3.4"/><circle cx="103.5" cy="58.6" r="3.4"/><circle cx="112.5" cy="58.6" r="3.4"/><circle cx="121.5" cy="58.6" r="3.4"/><circle cx="130.5" cy="58.6" r="3.4"/><circle cx="139.5" cy="58.6" r="3.4"/><circle cx="148.5" cy="58.6" r="3.4"/><circle cx="157.5" cy="58.6" r="3.4"/><circle cx="166.5" cy="58.6" r="3.4"/><circle cx="175.5" cy="58.6" r="3.4"/><circle cx="184.5" cy="58.6" r="3.4"/><circle cx="90" cy="66.4" r="3.4"/><circle cx="99" cy="66.4" r="3.4"/><circle cx="108" cy="66.4" r="3.4"/><circle cx="117" cy="66.4" r="3.4"/><circle cx="126" cy="66.4" r="3.4"/><circle cx="135" cy="66.4" r="3.4"/><circle cx="144" cy="66.4" r="3.4"/><circle cx="153" cy="66.4" r="3.4"/><circle cx="162" cy="66.4" r="3.4"/><circle cx="171" cy="66.4" r="3.4"/><circle cx="180" cy="66.4" r="3.4"/><circle cx="189" cy="66.4" r="3.4"/><circle cx="85.5" cy="74.1" r="3.4"/><circle cx="94.5" cy="74.1" r="3.4"/><circle cx="103.5" cy="74.1" r="3.4"/><circle cx="112.5" cy="74.1" r="3.4"/><circle cx="121.5" cy="74.1" r="3.4"/><circle cx="130.5" cy="74.1" r="3.4"/><circle cx="139.5" cy="74.1" r="3.4"/><circle cx="148.5" cy="74.1" r="3.4"/><circle cx="157.5" cy="74.1" r="3.4"/><circle cx="166.5" cy="74.1" r="3.4"/><circle cx="175.5" cy="74.1" r="3.4"/><circle cx="184.5" cy="74.1" r="3.4"/><circle cx="81" cy="81.9" r="3.4"/><circle cx="90" cy="81.9" r="3.4"/><circle cx="99" cy="81.9" r="3.4"/><circle cx="108" cy="81.9" r="3.4"/><circle cx="117" cy="81.9" r="3.4"/><circle cx="126" cy="81.9" r="3.4"/><circle cx="135" cy="81.9" r="3.4"/><circle cx="144" cy="81.9" r="3.4"/><circle cx="153" cy="81.9" r="3.4"/><circle cx="162" cy="81.9" r="3.4"/><circle cx="171" cy="81.9" r="3.4"/><circle cx="180" cy="81.9" r="3.4"/><circle cx="76.5" cy="89.7" r="3.4"/><circle cx="85.5" cy="89.7" r="3.4"/><circle cx="94.5" cy="89.7" r="3.4"/><circle cx="103.5" cy="89.7" r="3.4"/><circle cx="112.5" cy="89.7" r="3.4"/><circle cx="121.5" cy="89.7" r="3.4"/><circle cx="130.5" cy="89.7" r="3.4"/><circle cx="139.5" cy="89.7" r="3.4"/><circle cx="148.5" cy="89.7" r="3.4"/><circle cx="157.5" cy="89.7" r="3.4"/><circle cx="166.5" cy="89.7" r="3.4"/><circle cx="175.5" cy="89.7" r="3.4"/><circle cx="184.5" cy="89.7" r="3.4"/><circle cx="72" cy="97.5" r="3.4"/><circle cx="81" cy="97.5" r="3.4"/><circle cx="90" cy="97.5" r="3.4"/><circle cx="99" cy="97.5" r="3.4"/><circle cx="108" cy="97.5" r="3.4"/><circle cx="117" cy="97.5" r="3.4"/><circle cx="126" cy="97.5" r="3.4"/><circle cx="135" cy="97.5" r="3.4"/><circle cx="144" cy="97.5" r="3.4"/><circle cx="153" cy="97.5" r="3.4"/><circle cx="162" cy="97.5" r="3.4"/><circle cx="171" cy="97.5" r="3.4"/><circle cx="180" cy="97.5" r="3.4"/><circle cx="67.5" cy="105.3" r="3.4"/><circle cx="76.5" cy="105.3" r="3.4"/><circle cx="85.5" cy="105.3" r="3.4"/><circle cx="94.5" cy="105.3" r="3.4"/><circle cx="103.5" cy="105.3" r="3.4"/><circle cx="112.5" cy="105.3" r="3.4"/><circle cx="121.5" cy="105.3" r="3.4"/><circle cx="130.5" cy="105.3" r="3.4"/><circle cx="139.5" cy="105.3" r="3.4"/><circle cx="148.5" cy="105.3" r="3.4"/><circle cx="157.5" cy="105.3" r="3.4"/><circle cx="166.5" cy="105.3" r="3.4"/><circle cx="175.5" cy="105.3" r="3.4"/><circle cx="54" cy="113.1" r="3.4"/><circle cx="63" cy="113.1" r="3.4"/><circle cx="72" cy="113.1" r="3.4"/><circle cx="81" cy="113.1" r="3.4"/><circle cx="90" cy="113.1" r="3.4"/><circle cx="99" cy="113.1" r="3.4"/><circle cx="108" cy="113.1" r="3.4"/><circle cx="117" cy="113.1" r="3.4"/><circle cx="126" cy="113.1" r="3.4"/><circle cx="135" cy="113.1" r="3.4"/><circle cx="144" cy="113.1" r="3.4"/><circle cx="153" cy="113.1" r="3.4"/><circle cx="162" cy="113.1" r="3.4"/><circle cx="171" cy="113.1" r="3.4"/><circle cx="180" cy="113.1" r="3.4"/><circle cx="49.5" cy="120.9" r="3.4"/><circle cx="58.5" cy="120.9" r="3.4"/><circle cx="67.5" cy="120.9" r="3.4"/><circle cx="76.5" cy="120.9" r="3.4"/><circle cx="85.5" cy="120.9" r="3.4"/><circle cx="94.5" cy="120.9" r="3.4"/><circle cx="103.5" cy="120.9" r="3.4"/><circle cx="112.5" cy="120.9" r="3.4"/><circle cx="121.5" cy="120.9" r="3.4"/><circle cx="130.5" cy="120.9" r="3.4"/><circle cx="139.5" cy="120.9" r="3.4"/><circle cx="148.5" cy="120.9" r="3.4"/><circle cx="157.5" cy="120.9" r="3.4"/><circle cx="166.5" cy="120.9" r="3.4"/><circle cx="175.5" cy="120.9" r="3.4"/><circle cx="45" cy="128.7" r="3.4"/><circle cx="54" cy="128.7" r="3.4"/><circle cx="63" cy="128.7" r="3.4"/><circle cx="72" cy="128.7" r="3.4"/><circle cx="81" cy="128.7" r="3.4"/><circle cx="90" cy="128.7" r="3.4"/><circle cx="99" cy="128.7" r="3.4"/><circle cx="108" cy="128.7" r="3.4"/><circle cx="117" cy="128.7" r="3.4"/><circle cx="126" cy="128.7" r="3.4"/><circle cx="135" cy="128.7" r="3.4"/><circle cx="144" cy="128.7" r="3.4"/><circle cx="153" cy="128.7" r="3.4"/><circle cx="162" cy="128.7" r="3.4"/><circle cx="171" cy="128.7" r="3.4"/><circle cx="40.5" cy="136.5" r="3.4"/><circle cx="49.5" cy="136.5" r="3.4"/><circle cx="58.5" cy="136.5" r="3.4"/><circle cx="67.5" cy="136.5" r="3.4"/><circle cx="76.5" cy="136.5" r="3.4"/><circle cx="85.5" cy="136.5" r="3.4"/><circle cx="94.5" cy="136.5" r="3.4"/><circle cx="103.5" cy="136.5" r="3.4"/><circle cx="112.5" cy="136.5" r="3.4"/><circle cx="121.5" cy="136.5" r="3.4"/><circle cx="130.5" cy="136.5" r="3.4"/><circle cx="139.5" cy="136.5" r="3.4"/><circle cx="148.5" cy="136.5" r="3.4"/><circle cx="157.5" cy="136.5" r="3.4"/><circle cx="166.5" cy="136.5" r="3.4"/><circle cx="175.5" cy="136.5" r="3.4"/><circle cx="36" cy="144.3" r="3.4"/><circle cx="45" cy="144.3" r="3.4"/><circle cx="54" cy="144.3" r="3.4"/><circle cx="63" cy="144.3" r="3.4"/><circle cx="72" cy="144.3" r="3.4"/><circle cx="81" cy="144.3" r="3.4"/><circle cx="90" cy="144.3" r="3.4"/><circle cx="99" cy="144.3" r="3.4"/><circle cx="108" cy="144.3" r="3.4"/><circle cx="117" cy="144.3" r="3.4"/><circle cx="126" cy="144.3" r="3.4"/><circle cx="135" cy="144.3" r="3.4"/><circle cx="144" cy="144.3" r="3.4"/><circle cx="153" cy="144.3" r="3.4"/><circle cx="162" cy="144.3" r="3.4"/><circle cx="171" cy="144.3" r="3.4"/><circle cx="31.5" cy="152.1" r="3.4"/><circle cx="40.5" cy="152.1" r="3.4"/><circle cx="49.5" cy="152.1" r="3.4"/><circle cx="58.5" cy="152.1" r="3.4"/><circle cx="67.5" cy="152.1" r="3.4"/><circle cx="76.5" cy="152.1" r="3.4"/><circle cx="85.5" cy="152.1" r="3.4"/><circle cx="94.5" cy="152.1" r="3.4"/><circle cx="103.5" cy="152.1" r="3.4"/><circle cx="112.5" cy="152.1" r="3.4"/><circle cx="121.5" cy="152.1" r="3.4"/><circle cx="130.5" cy="152.1" r="3.4"/><circle cx="139.5" cy="152.1" r="3.4"/><circle cx="148.5" cy="152.1" r="3.4"/><circle cx="157.5" cy="152.1" r="3.4"/><circle cx="166.5" cy="152.1" r="3.4"/><circle cx="27" cy="159.9" r="3.4"/><circle cx="36" cy="159.9" r="3.4"/><circle cx="45" cy="159.9" r="3.4"/><circle cx="54" cy="159.9" r="3.4"/><circle cx="63" cy="159.9" r="3.4"/><circle cx="72" cy="159.9" r="3.4"/><circle cx="81" cy="159.9" r="3.4"/><circle cx="90" cy="159.9" r="3.4"/><circle cx="99" cy="159.9" r="3.4"/><circle cx="108" cy="159.9" r="3.4"/><circle cx="117" cy="159.9" r="3.4"/><circle cx="126" cy="159.9" r="3.4"/><circle cx="135" cy="159.9" r="3.4"/><circle cx="144" cy="159.9" r="3.4"/><circle cx="153" cy="159.9" r="3.4"/><circle cx="162" cy="159.9" r="3.4"/><circle cx="22.5" cy="167.7" r="3.4"/><circle cx="31.5" cy="167.7" r="3.4"/><circle cx="40.5" cy="167.7" r="3.4"/><circle cx="49.5" cy="167.7" r="3.4"/><circle cx="58.5" cy="167.7" r="3.4"/><circle cx="67.5" cy="167.7" r="3.4"/><circle cx="76.5" cy="167.7" r="3.4"/><circle cx="85.5" cy="167.7" r="3.4"/><circle cx="94.5" cy="167.7" r="3.4"/><circle cx="103.5" cy="167.7" r="3.4"/><circle cx="112.5" cy="167.7" r="3.4"/><circle cx="121.5" cy="167.7" r="3.4"/><circle cx="130.5" cy="167.7" r="3.4"/><circle cx="139.5" cy="167.7" r="3.4"/><circle cx="148.5" cy="167.7" r="3.4"/><circle cx="157.5" cy="167.7" r="3.4"/><circle cx="166.5" cy="167.7" r="3.4"/><circle cx="27" cy="175.5" r="3.4"/><circle cx="36" cy="175.5" r="3.4"/><circle cx="45" cy="175.5" r="3.4"/><circle cx="54" cy="175.5" r="3.4"/><circle cx="63" cy="175.5" r="3.4"/><circle cx="72" cy="175.5" r="3.4"/><circle cx="81" cy="175.5" r="3.4"/><circle cx="90" cy="175.5" r="3.4"/><circle cx="99" cy="175.5" r="3.4"/><circle cx="108" cy="175.5" r="3.4"/><circle cx="117" cy="175.5" r="3.4"/><circle cx="126" cy="175.5" r="3.4"/><circle cx="135" cy="175.5" r="3.4"/><circle cx="144" cy="175.5" r="3.4"/><circle cx="153" cy="175.5" r="3.4"/><circle cx="162" cy="175.5" r="3.4"/><circle cx="22.5" cy="183.3" r="3.4"/><circle cx="31.5" cy="183.3" r="3.4"/><circle cx="40.5" cy="183.3" r="3.4"/><circle cx="49.5" cy="183.3" r="3.4"/><circle cx="58.5" cy="183.3" r="3.4"/><circle cx="67.5" cy="183.3" r="3.4"/><circle cx="76.5" cy="183.3" r="3.4"/><circle cx="85.5" cy="183.3" r="3.4"/><circle cx="94.5" cy="183.3" r="3.4"/><circle cx="103.5" cy="183.3" r="3.4"/><circle cx="112.5" cy="183.3" r="3.4"/><circle cx="121.5" cy="183.3" r="3.4"/><circle cx="130.5" cy="183.3" r="3.4"/><circle cx="139.5" cy="183.3" r="3.4"/><circle cx="148.5" cy="183.3" r="3.4"/><circle cx="157.5" cy="183.3" r="3.4"/><circle cx="18" cy="191.1" r="3.4"/><circle cx="27" cy="191.1" r="3.4"/><circle cx="36" cy="191.1" r="3.4"/><circle cx="45" cy="191.1" r="3.4"/><circle cx="54" cy="191.1" r="3.4"/><circle cx="63" cy="191.1" r="3.4"/><circle cx="72" cy="191.1" r="3.4"/><circle cx="81" cy="191.1" r="3.4"/><circle cx="90" cy="191.1" r="3.4"/><circle cx="99" cy="191.1" r="3.4"/><circle cx="108" cy="191.1" r="3.4"/><circle cx="117" cy="191.1" r="3.4"/><circle cx="126" cy="191.1" r="3.4"/><circle cx="135" cy="191.1" r="3.4"/><circle cx="144" cy="191.1" r="3.4"/><circle cx="153" cy="191.1" r="3.4"/><circle cx="13.5" cy="198.9" r="3.4"/><circle cx="22.5" cy="198.9" r="3.4"/><circle cx="31.5" cy="198.9" r="3.4"/><circle cx="40.5" cy="198.9" r="3.4"/><circle cx="49.5" cy="198.9" r="3.4"/><circle cx="58.5" cy="198.9" r="3.4"/><circle cx="67.5" cy="198.9" r="3.4"/><circle cx="76.5" cy="198.9" r="3.4"/><circle cx="85.5" cy="198.9" r="3.4"/><circle cx="94.5" cy="198.9" r="3.4"/><circle cx="103.5" cy="198.9" r="3.4"/><circle cx="112.5" cy="198.9" r="3.4"/><circle cx="121.5" cy="198.9" r="3.4"/><circle cx="130.5" cy="198.9" r="3.4"/><circle cx="139.5" cy="198.9" r="3.4"/><circle cx="148.5" cy="198.9" r="3.4"/><circle cx="18" cy="206.6" r="3.4"/><circle cx="27" cy="206.6" r="3.4"/><circle cx="36" cy="206.6" r="3.4"/><circle cx="45" cy="206.6" r="3.4"/><circle cx="54" cy="206.6" r="3.4"/><circle cx="63" cy="206.6" r="3.4"/><circle cx="72" cy="206.6" r="3.4"/><circle cx="81" cy="206.6" r="3.4"/><circle cx="90" cy="206.6" r="3.4"/><circle cx="99" cy="206.6" r="3.4"/><circle cx="108" cy="206.6" r="3.4"/><circle cx="117" cy="206.6" r="3.4"/><circle cx="126" cy="206.6" r="3.4"/><circle cx="135" cy="206.6" r="3.4"/><circle cx="144" cy="206.6" r="3.4"/><circle cx="153" cy="206.6" r="3.4"/><circle cx="13.5" cy="214.4" r="3.4"/><circle cx="22.5" cy="214.4" r="3.4"/><circle cx="31.5" cy="214.4" r="3.4"/><circle cx="40.5" cy="214.4" r="3.4"/><circle cx="49.5" cy="214.4" r="3.4"/><circle cx="58.5" cy="214.4" r="3.4"/><circle cx="67.5" cy="214.4" r="3.4"/><circle cx="76.5" cy="214.4" r="3.4"/><circle cx="85.5" cy="214.4" r="3.4"/><circle cx="94.5" cy="214.4" r="3.4"/><circle cx="103.5" cy="214.4" r="3.4"/><circle cx="112.5" cy="214.4" r="3.4"/><circle cx="121.5" cy="214.4" r="3.4"/><circle cx="130.5" cy="214.4" r="3.4"/><circle cx="139.5" cy="214.4" r="3.4"/><circle cx="148.5" cy="214.4" r="3.4"/><circle cx="18" cy="222.2" r="3.4"/><circle cx="27" cy="222.2" r="3.4"/><circle cx="36" cy="222.2" r="3.4"/><circle cx="45" cy="222.2" r="3.4"/><circle cx="54" cy="222.2" r="3.4"/><circle cx="63" cy="222.2" r="3.4"/><circle cx="72" cy="222.2" r="3.4"/><circle cx="81" cy="222.2" r="3.4"/><circle cx="90" cy="222.2" r="3.4"/><circle cx="99" cy="222.2" r="3.4"/><circle cx="108" cy="222.2" r="3.4"/><circle cx="117" cy="222.2" r="3.4"/><circle cx="126" cy="222.2" r="3.4"/><circle cx="135" cy="222.2" r="3.4"/><circle cx="144" cy="222.2" r="3.4"/><circle cx="22.5" cy="230" r="3.4"/><circle cx="31.5" cy="230" r="3.4"/><circle cx="40.5" cy="230" r="3.4"/><circle cx="49.5" cy="230" r="3.4"/><circle cx="58.5" cy="230" r="3.4"/><circle cx="67.5" cy="230" r="3.4"/><circle cx="76.5" cy="230" r="3.4"/><circle cx="85.5" cy="230" r="3.4"/><circle cx="94.5" cy="230" r="3.4"/><circle cx="103.5" cy="230" r="3.4"/><circle cx="112.5" cy="230" r="3.4"/><circle cx="121.5" cy="230" r="3.4"/><circle cx="130.5" cy="230" r="3.4"/><circle cx="139.5" cy="230" r="3.4"/><circle cx="18" cy="237.8" r="3.4"/><circle cx="27" cy="237.8" r="3.4"/><circle cx="36" cy="237.8" r="3.4"/><circle cx="45" cy="237.8" r="3.4"/><circle cx="54" cy="237.8" r="3.4"/><circle cx="63" cy="237.8" r="3.4"/><circle cx="72" cy="237.8" r="3.4"/><circle cx="81" cy="237.8" r="3.4"/><circle cx="90" cy="237.8" r="3.4"/><circle cx="99" cy="237.8" r="3.4"/><circle cx="108" cy="237.8" r="3.4"/><circle cx="117" cy="237.8" r="3.4"/><circle cx="126" cy="237.8" r="3.4"/><circle cx="135" cy="237.8" r="3.4"/><circle cx="144" cy="237.8" r="3.4"/><circle cx="22.5" cy="245.6" r="3.4"/><circle cx="31.5" cy="245.6" r="3.4"/><circle cx="40.5" cy="245.6" r="3.4"/><circle cx="49.5" cy="245.6" r="3.4"/><circle cx="58.5" cy="245.6" r="3.4"/><circle cx="67.5" cy="245.6" r="3.4"/><circle cx="76.5" cy="245.6" r="3.4"/><circle cx="85.5" cy="245.6" r="3.4"/><circle cx="94.5" cy="245.6" r="3.4"/><circle cx="103.5" cy="245.6" r="3.4"/><circle cx="112.5" cy="245.6" r="3.4"/><circle cx="121.5" cy="245.6" r="3.4"/><circle cx="130.5" cy="245.6" r="3.4"/><circle cx="139.5" cy="245.6" r="3.4"/><circle cx="27" cy="253.4" r="3.4"/><circle cx="36" cy="253.4" r="3.4"/><circle cx="45" cy="253.4" r="3.4"/><circle cx="54" cy="253.4" r="3.4"/><circle cx="63" cy="253.4" r="3.4"/><circle cx="72" cy="253.4" r="3.4"/><circle cx="81" cy="253.4" r="3.4"/><circle cx="90" cy="253.4" r="3.4"/><circle cx="99" cy="253.4" r="3.4"/><circle cx="108" cy="253.4" r="3.4"/><circle cx="117" cy="253.4" r="3.4"/><circle cx="126" cy="253.4" r="3.4"/><circle cx="135" cy="253.4" r="3.4"/><circle cx="31.5" cy="261.2" r="3.4"/><circle cx="40.5" cy="261.2" r="3.4"/><circle cx="49.5" cy="261.2" r="3.4"/><circle cx="58.5" cy="261.2" r="3.4"/><circle cx="67.5" cy="261.2" r="3.4"/><circle cx="76.5" cy="261.2" r="3.4"/><circle cx="85.5" cy="261.2" r="3.4"/><circle cx="94.5" cy="261.2" r="3.4"/><circle cx="103.5" cy="261.2" r="3.4"/><circle cx="112.5" cy="261.2" r="3.4"/><circle cx="121.5" cy="261.2" r="3.4"/><circle cx="130.5" cy="261.2" r="3.4"/><circle cx="139.5" cy="261.2" r="3.4"/><circle cx="27" cy="269" r="3.4"/><circle cx="36" cy="269" r="3.4"/><circle cx="45" cy="269" r="3.4"/><circle cx="54" cy="269" r="3.4"/><circle cx="63" cy="269" r="3.4"/><circle cx="72" cy="269" r="3.4"/><circle cx="81" cy="269" r="3.4"/><circle cx="90" cy="269" r="3.4"/><circle cx="99" cy="269" r="3.4"/><circle cx="108" cy="269" r="3.4"/><circle cx="117" cy="269" r="3.4"/><circle cx="126" cy="269" r="3.4"/><circle cx="135" cy="269" r="3.4"/><circle cx="31.5" cy="276.8" r="3.4"/><circle cx="40.5" cy="276.8" r="3.4"/><circle cx="49.5" cy="276.8" r="3.4"/><circle cx="58.5" cy="276.8" r="3.4"/><circle cx="67.5" cy="276.8" r="3.4"/><circle cx="76.5" cy="276.8" r="3.4"/><circle cx="85.5" cy="276.8" r="3.4"/><circle cx="94.5" cy="276.8" r="3.4"/><circle cx="103.5" cy="276.8" r="3.4"/><circle cx="112.5" cy="276.8" r="3.4"/><circle cx="121.5" cy="276.8" r="3.4"/><circle cx="130.5" cy="276.8" r="3.4"/><circle cx="36" cy="284.6" r="3.4"/><circle cx="45" cy="284.6" r="3.4"/><circle cx="54" cy="284.6" r="3.4"/><circle cx="63" cy="284.6" r="3.4"/><circle cx="72" cy="284.6" r="3.4"/><circle cx="81" cy="284.6" r="3.4"/><circle cx="90" cy="284.6" r="3.4"/><circle cx="99" cy="284.6" r="3.4"/><circle cx="108" cy="284.6" r="3.4"/><circle cx="117" cy="284.6" r="3.4"/><circle cx="126" cy="284.6" r="3.4"/><circle cx="31.5" cy="292.4" r="3.4"/><circle cx="40.5" cy="292.4" r="3.4"/><circle cx="49.5" cy="292.4" r="3.4"/><circle cx="58.5" cy="292.4" r="3.4"/><circle cx="67.5" cy="292.4" r="3.4"/><circle cx="76.5" cy="292.4" r="3.4"/><circle cx="85.5" cy="292.4" r="3.4"/><circle cx="94.5" cy="292.4" r="3.4"/><circle cx="103.5" cy="292.4" r="3.4"/><circle cx="112.5" cy="292.4" r="3.4"/><circle cx="121.5" cy="292.4" r="3.4"/><circle cx="36" cy="300.2" r="3.4"/><circle cx="45" cy="300.2" r="3.4"/><circle cx="54" cy="300.2" r="3.4"/><circle cx="63" cy="300.2" r="3.4"/><circle cx="72" cy="300.2" r="3.4"/><circle cx="81" cy="300.2" r="3.4"/><circle cx="90" cy="300.2" r="3.4"/><circle cx="99" cy="300.2" r="3.4"/><circle cx="108" cy="300.2" r="3.4"/><circle cx="117" cy="300.2" r="3.4"/><circle cx="40.5" cy="308" r="3.4"/><circle cx="49.5" cy="308" r="3.4"/><circle cx="58.5" cy="308" r="3.4"/><circle cx="67.5" cy="308" r="3.4"/><circle cx="76.5" cy="308" r="3.4"/><circle cx="85.5" cy="308" r="3.4"/><circle cx="94.5" cy="308" r="3.4"/><circle cx="103.5" cy="308" r="3.4"/><circle cx="112.5" cy="308" r="3.4"/><circle cx="54" cy="315.8" r="3.4"/><circle cx="63" cy="315.8" r="3.4"/><circle cx="72" cy="315.8" r="3.4"/><circle cx="81" cy="315.8" r="3.4"/><circle cx="90" cy="315.8" r="3.4"/><circle cx="99" cy="315.8" r="3.4"/><circle cx="108" cy="315.8" r="3.4"/><circle cx="58.5" cy="323.6" r="3.4"/><circle cx="67.5" cy="323.6" r="3.4"/><circle cx="76.5" cy="323.6" r="3.4"/><circle cx="85.5" cy="323.6" r="3.4"/><circle cx="94.5" cy="323.6" r="3.4"/><circle cx="63" cy="331.3" r="3.4"/><circle cx="72" cy="331.3" r="3.4"/><circle cx="81" cy="331.3" r="3.4"/><circle cx="90" cy="331.3" r="3.4"/><circle cx="67.5" cy="339.1" r="3.4"/><circle cx="76.5" cy="339.1" r="3.4"/><circle cx="85.5" cy="339.1" r="3.4"/><circle cx="72" cy="346.9" r="3.4"/><circle cx="81" cy="346.9" r="3.4"/><circle cx="76.5" cy="354.7" r="3.4"/><circle cx="85.5" cy="354.7" r="3.4"/><circle cx="81" cy="362.5" r="3.4"/><circle cx="76.5" cy="370.3" r="3.4"/><circle cx="85.5" cy="370.3" r="3.4"/><circle cx="81" cy="378.1" r="3.4"/></g>
@@ -1216,16 +1191,6 @@
           <h3>不需要任何金鑰</h3>
           <p>避難所資料與國土測繪中心底圖都不需要 API Key。任何人 clone 下來 <code>docker compose up</code> 就能跑起一套完整的自有部署。</p>
         </article>
-      </div>
-
-      <div class="notice" style="margin-top: 48px;">
-        <div class="ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-        </div>
-        <div>
-          <h3>這是查詢輔助工具，不是官方災害應變系統</h3>
-          <p>TESIIS 幫助你事先掌握避難收容處所的位置與資訊。但災害真的發生時，請務必以各地方政府的即時公告與現場人員的指示為準。</p>
-        </div>
       </div>
     </div>
   </section>
