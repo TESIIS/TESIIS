@@ -15,6 +15,8 @@ void main() {
       // Treating them as "not yes" would hide most of the dataset.
       expect(HazardFlag.isYes('備用'), isTrue);
       expect(HazardFlag.isYes('老舊聚落'), isTrue);
+      expect(HazardFlag.isYes('是(備用)'), isTrue);
+      expect(HazardFlag.normalizeForOutput('是(備用)'), 'Y');
     });
 
     test('literal yes/no spellings', () {

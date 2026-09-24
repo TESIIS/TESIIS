@@ -98,7 +98,7 @@ Future<void> main(List<String> args) async {
 
     if (showReport) _printReport(rawRows.length, shelters, rejected);
 
-    final failed = _checkGates(rawRows.length, shelters, output);
+    final failed = _checkGates(rawRows.length, shelters, rejected, output);
     if (failed) exitCode = 1;
   } finally {
     client.close();
@@ -277,7 +277,12 @@ void _printReport(
 // ---------------------------------------------------------------------------
 
 /// Returns true if any gate failed (so `main` can set a non-zero exit code).
-bool _checkGates(int totalRaw, List<Shelter> shelters, String outputPath) {
+bool _checkGates(
+  int totalRaw,
+  List<Shelter> shelters,
+  List<(Map<String, String> row, String reason)> rejected,
+  String outputPath,
+) {
   var failed = false;
 
   final acceptedCounties = shelters
@@ -308,6 +313,12 @@ bool _checkGates(int totalRaw, List<Shelter> shelters, String outputPath) {
     byCounty.putIfAbsent(c, () => [0, 0]);
     byCounty[c]![0]++;
     byCounty[c]![1]++;
+  }
+  for (final (row, _) in rejected) {
+    final (city, _) = NfaShelterMapper.splitRegion(row['縣市及鄉鎮市區'] ?? '');
+    if (city.isEmpty) continue;
+    byCounty.putIfAbsent(city, () => [0, 0]);
+    byCounty[city]![1]++;
   }
   for (final entry in byCounty.entries) {
     final ratio = entry.value[1] == 0 ? 0.0 : entry.value[0] / entry.value[1];
