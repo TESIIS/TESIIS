@@ -33,6 +33,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:server/core/csv/csv_codec.dart';
 import 'package:server/core/geo/taipei_bounds.dart';
+import 'package:server/core/http/retry_get.dart';
 import 'package:server/data/datasources/external/taipei_shelter_resource.dart';
 import 'package:server/domain/entities/shelter_fields.dart';
 
@@ -166,12 +167,7 @@ Future<List<Map<String, dynamic>>> _fetchShelters(
     );
   }
 
-  final response = await client.get(Uri.parse(_shelterResourceUrl));
-  if (response.statusCode != 200) {
-    throw HttpException(
-      'GET $_shelterResourceUrl failed: HTTP ${response.statusCode}',
-    );
-  }
+  final response = await getWithRetry(client, Uri.parse(_shelterResourceUrl));
   final rows = decodeTaipeiShelterResource(response.bodyBytes);
   final cache = File('$_cacheDir/shelters.json');
   cache.parent.createSync(recursive: true);
@@ -190,10 +186,7 @@ Future<String> _cachedGet(
     stdout.writeln('    (cached: ${file.path})');
     return file.readAsStringSync();
   }
-  final response = await client.get(Uri.parse(url));
-  if (response.statusCode != 200) {
-    throw HttpException('GET $url failed: HTTP ${response.statusCode}');
-  }
+  final response = await getWithRetry(client, Uri.parse(url));
   // Government exports are UTF-8 but do not always say so in Content-Type,
   // which would make the http package fall back to latin-1 and mangle 中文.
   final body = utf8.decode(response.bodyBytes);
@@ -228,10 +221,7 @@ Future<List<Map<String, dynamic>>> _fetchTaipeiDataset(
             'offset': '$offset',
           },
         );
-    final response = await client.get(uri);
-    if (response.statusCode != 200) {
-      throw HttpException('GET $uri failed: HTTP ${response.statusCode}');
-    }
+    final response = await getWithRetry(client, uri);
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     final batch = ((decoded['result']?['results']) as List? ?? const [])
         .cast<Map<String, dynamic>>();

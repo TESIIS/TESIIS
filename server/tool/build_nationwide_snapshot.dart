@@ -27,6 +27,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:server/core/config/env.dart';
 import 'package:server/core/csv/csv_codec.dart';
+import 'package:server/core/http/retry_get.dart';
 import 'package:server/core/geo/taiwan_bounds.dart';
 import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
 import 'package:server/data/mappers/nfa_shelter_mapper.dart';
@@ -126,10 +127,7 @@ Future<String> _cachedGet(
     stdout.writeln('    (cached: ${file.path})');
     return file.readAsStringSync();
   }
-  final response = await client.get(Uri.parse(url));
-  if (response.statusCode != 200) {
-    throw HttpException('GET $url failed: HTTP ${response.statusCode}');
-  }
+  final response = await getWithRetry(client, Uri.parse(url));
   final body = utf8.decode(response.bodyBytes);
   file.parent.createSync(recursive: true);
   file.writeAsStringSync(body);
