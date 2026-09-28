@@ -27,6 +27,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:server/core/config/env.dart';
 import 'package:server/core/csv/csv_codec.dart';
+import 'package:server/core/http/retry_get.dart';
 import 'package:server/core/geo/taiwan_bounds.dart';
 import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
 import 'package:server/data/mappers/nfa_shelter_mapper.dart';
@@ -98,7 +99,7 @@ Future<void> main(List<String> args) async {
 
     if (showReport) _printReport(rawRows.length, shelters, rejected);
 
-    final failed = _checkGates(rawRows.length, shelters, output);
+    final failed = _checkGates(rawRows.length, shelters, rejected, output);
     if (failed) exitCode = 1;
   } finally {
     client.close();
@@ -126,10 +127,7 @@ Future<String> _cachedGet(
     stdout.writeln('    (cached: ${file.path})');
     return file.readAsStringSync();
   }
-  final response = await client.get(Uri.parse(url));
-  if (response.statusCode != 200) {
-    throw HttpException('GET $url failed: HTTP ${response.statusCode}');
-  }
+  final response = await getWithRetry(client, Uri.parse(url));
   final body = utf8.decode(response.bodyBytes);
   file.parent.createSync(recursive: true);
   file.writeAsStringSync(body);
@@ -277,7 +275,12 @@ void _printReport(
 // ---------------------------------------------------------------------------
 
 /// Returns true if any gate failed (so `main` can set a non-zero exit code).
-bool _checkGates(int totalRaw, List<Shelter> shelters, String outputPath) {
+bool _checkGates(
+  int totalRaw,
+  List<Shelter> shelters,
+  List<(Map<String, String> row, String reason)> rejected,
+  String outputPath,
+) {
   var failed = false;
 
   final acceptedCounties = shelters
@@ -308,6 +311,12 @@ bool _checkGates(int totalRaw, List<Shelter> shelters, String outputPath) {
     byCounty.putIfAbsent(c, () => [0, 0]);
     byCounty[c]![0]++;
     byCounty[c]![1]++;
+  }
+  for (final (row, _) in rejected) {
+    final (city, _) = NfaShelterMapper.splitRegion(row['縣市及鄉鎮市區'] ?? '');
+    if (city.isEmpty) continue;
+    byCounty.putIfAbsent(city, () => [0, 0]);
+    byCounty[city]![1]++;
   }
   for (final entry in byCounty.entries) {
     final ratio = entry.value[1] == 0 ? 0.0 : entry.value[0] / entry.value[1];

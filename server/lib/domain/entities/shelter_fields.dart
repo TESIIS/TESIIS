@@ -20,7 +20,7 @@
 /// make `?tsunami=Y` return nothing, since 海嘯 never carries a literal 'Y'.
 class HazardFlag {
   /// Upstream spellings that mean yes without saying 'Y'.
-  static const yesAliases = {'備用', '老舊聚落'};
+  static const yesAliases = {'備用', '是(備用)', '老舊聚落'};
 
   static const _yesLiterals = {'Y', 'YES', 'TRUE', '是'};
   static const _noLiterals = {'N', 'NO', 'FALSE', '否'};

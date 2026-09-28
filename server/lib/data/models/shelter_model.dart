@@ -78,7 +78,7 @@ class ShelterModel {
       id: ShelterNumber.parseInt(json['_id']),
       importDate: importDate,
       shelterCode: (json['收容所編號'] ?? '').toString(),
-      name: (json['名稱'] ?? '').toString(),
+      name: (json['名稱'] ?? json['名稱(學校機關全銜)'] ?? '').toString(),
       city: (json['縣市'] ?? '').toString(),
       zipcode: (json['郵遞區號'] ?? '').toString(),
       township: (json['鄉鎮'] ?? '').toString(),
@@ -89,14 +89,17 @@ class ShelterModel {
       quake: json['震災']?.toString(),
       landslide: json['土石流']?.toString(),
       tsunami: json['海嘯']?.toString(),
-      relief: json['救濟支站']?.toString(),
+      relief: (json['救濟支站'] ?? json['救濟站'])?.toString(),
       accessible: json['無障礙設施']?.toString(),
       indoor: json['室內']?.toString(),
       outdoor: json['室外']?.toString(),
       serviceVillages: json['服務里別']?.toString(),
       capacity: ShelterNumber.parseInt(json['容納人數']),
       area: ShelterNumber.parseDouble(
-        json['收容所面積（平方公尺）'] ?? json['收容所面積'] ?? json['面積'],
+        json['收容所面積（平方公尺）'] ??
+            json['收容所面積(平方公尺)'] ??
+            json['收容所面積'] ??
+            json['面積'],
       ),
       contactName: json['聯絡人姓名']?.toString(),
       contactPhone: json['聯絡人連絡電話']?.toString(),
