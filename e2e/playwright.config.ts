@@ -12,6 +12,11 @@ export default defineConfig({
   } : undefined,
   testDir: './tests',
   fullyParallel: true,
+  // Each spec can pull a ~53 MB Flutter web build (CanvasKit, main.dart.js and
+  // the bundled CJK font). Running many at once saturates the origin and starves
+  // app startup, which shows up as spurious test timeouts rather than real
+  // product failures, so cap concurrency well below the CPU count.
+  workers: process.env.CI ? 2 : 2,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

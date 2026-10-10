@@ -12,12 +12,46 @@ test.beforeEach(async ({page, context}) => {
 });
 test.afterEach(async ({context}) => expect(errors.get(context)).toEqual([]));
 
+/// Flutter Web paints to a canvas and exposes buttons as `flt-semantics`
+/// nodes over it. A normal `.click()` works for most, but when a node sits over
+/// the map canvas Playwright's hit-target check can hang. Try the normal click
+/// briefly, then fall back to a raw mouse click at the node's centre.
+async function tap(page: Page, name: string, {exact = false, timeout = 30_000}: {exact?: boolean; timeout?: number} = {}) {
+  const target = page.getByRole('button', {name, exact});
+  await target.waitFor({state: 'attached', timeout});
+  try {
+    await target.click({timeout: 5_000});
+  } catch {
+    const box = await target.boundingBox();
+    if (!box) throw new Error(`tap: "${name}" has no bounding box`);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  }
+}
+
+/// Enables Flutter's semantics tree. The `Enable accessibility` placeholder
+/// can be clicked before Flutter has wired up its handler, silently losing the
+/// event, so retry until a known semantic node actually appears.
+async function enableSemantics(page: Page) {
+  const enable = page.getByRole('button', {name: 'Enable accessibility'});
+  await enable.waitFor({state: 'attached', timeout: 60_000});
+  const ready = page.getByRole('button', {name: '我的避難準備'});
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await enable.dispatchEvent('click').catch(() => {});
+    try {
+      await ready.waitFor({state: 'attached', timeout: 10_000});
+      return;
+    } catch {
+      // Semantics not up yet (still loading CanvasKit/font, or the click was
+      // dropped). Try again.
+    }
+  }
+  throw new Error('Flutter semantics did not become available');
+}
+
 async function openAlerts(page: Page) {
   await page.goto('/app/');
-  const semantics = page.getByRole('button', {name: 'Enable accessibility'});
-  await semantics.waitFor({state: 'attached', timeout: 60_000});
-  await semantics.dispatchEvent('click');
-  await page.getByRole('button', {name: '區域災害警報'}).click();
+  await enableSemantics(page);
+  await tap(page, '區域災害警報', {timeout: 60_000});
 }
 
 function fixture() {
@@ -36,7 +70,7 @@ function fixture() {
 }
 
 test('mobile region following, history and shelter handoff', async ({page}) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const f = fixture();
   await page.setViewportSize({width: 390, height: 844});
   await page.route('**/api/alerts?*', async (route) => {
@@ -48,7 +82,7 @@ test('mobile region following, history and shelter handoff', async ({page}) => {
   await expect(page.getByRole('group', {name: /測試用中正區降雨公告/})).toBeVisible();
   await expect(page.getByRole('checkbox', {name: '發布期間內', exact: true})).toBeVisible();
   const regions = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/regions');
-  await page.getByRole('button', {name: '全國', exact: true}).click();
+  await tap(page, '全國', {exact: true});
   await regions;
   await page.getByRole('button', {name: '縣市 選擇縣市'}).press('Enter');
   const towns = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/regions' && new URL(r.url()).searchParams.get('city') === '臺北市');
@@ -57,9 +91,9 @@ test('mobile region following, history and shelter handoff', async ({page}) => {
   await page.getByRole('button', {name: '鄉鎮市區 全縣市'}).press('Enter');
   await page.getByRole('menuitem', {name: '中正區', exact: true}).click();
   const scoped = page.waitForRequest((r) => r.url().includes('/api/alerts') && new URL(r.url()).searchParams.get('township') === '中正區');
-  await page.getByRole('button', {name: '套用'}).click();
+  await tap(page, '套用');
   await scoped;
-  await page.getByRole('button', {name: '關注這個區域'}).click();
+  await tap(page, '關注這個區域');
   await expect.poll(() => page.evaluate(async () => JSON.parse(await (window as any).tesiis.readLibrary()).alertRegions?.[0]?.township)).toBe('中正區');
   await page.getByRole('switch', {name: /^包含近期歷史公告/}).click();
   // Cards are built lazily by Flutter; scroll before locating the older cards.
@@ -74,21 +108,21 @@ test('mobile region following, history and shelter handoff', async ({page}) => {
     const url = new URL(r.url());
     return url.pathname === '/api/shelters' && url.searchParams.get('city') === '臺北市' && url.searchParams.get('township') === '中正區';
   });
-  await page.getByRole('button', {name: '查詢此區避難所'}).click();
+  await tap(page, '查詢此區避難所');
   await shelterQuery;
   await expect(page.getByRole('textbox', {name: '搜尋地點、避難所...'})).toBeVisible();
   await page.screenshot({path: test.info().outputPath('alert-to-shelters.png')});
 });
 
 test('network failure uses explicitly unverified device cache with original fetch time', async ({page}) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   const f = fixture();
   let fail = false;
   await page.route('**/api/alerts?*', (route) => fail ? route.fulfill({status: 503, json: {available: false}}) : route.fulfill({json: {available: true, data: [f.current], freshness: 'fresh', fetchedAt: f.fetchedAt, refreshAfterSeconds: 120, total: 1}}));
   await openAlerts(page);
   await expect(page.getByRole('checkbox', {name: '發布期間內', exact: true})).toBeVisible();
   fail = true;
-  await page.getByRole('button', {name: '重新整理警報'}).click();
+  await tap(page, '重新整理警報');
   await expect(page.getByText(/裝置快取：目前無法取得新公告/)).toBeVisible();
   await expect(page.getByRole('checkbox', {name: '最新狀態待確認', exact: true})).toBeVisible();
   await expect(page.getByRole('checkbox', {name: '發布期間內', exact: true})).toHaveCount(0);
@@ -96,13 +130,13 @@ test('network failure uses explicitly unverified device cache with original fetc
 });
 
 test('unavailable and fresh empty results have distinct messages', async ({page}) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   let healthy = false;
   await page.route('**/api/alerts?*', (route) => healthy ? route.fulfill({json: {available: true, data: [], freshness: 'fresh', fetchedAt: new Date().toISOString(), refreshAfterSeconds: 120, total: 0}}) : route.fulfill({status: 503, json: {available: false}}));
   await openAlerts(page);
   await expect(page.getByText('目前無法取得警報資料，請重試或查看官方平台。', {exact: true})).toBeVisible();
   await expect(page.getByText('本次來源清單沒有符合條件的公告。', {exact: true})).toHaveCount(0);
   healthy = true;
-  await page.getByRole('button', {name: '重新整理警報'}).click();
+  await tap(page, '重新整理警報');
   await expect(page.getByText('本次來源清單沒有符合條件的公告。', {exact: true})).toBeVisible();
 });
