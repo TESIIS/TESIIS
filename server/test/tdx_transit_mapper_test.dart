@@ -139,6 +139,35 @@ void main() {
       expect(result, isEmpty);
     });
 
+    test('rolls a past-midnight departure forward instead of dropping it', () {
+      // 23:46 Taipei (UTC 15:46). A train at 00:20 is 34 minutes away, not
+      // ~23h in the past — the wall-clock bug this guards against only fired
+      // between roughly 23:00 and 01:00.
+      final now = DateTime.utc(2026, 10, 10, 15, 46);
+      final result = TdxTransitMapper.traArrivals([
+        _traRow(
+          trainType: '區間',
+          destination: '新竹',
+          scheduledDepartureTime: '00:20:00',
+        ),
+      ], now: now);
+
+      expect(result.single.minutesUntil, inInclusiveRange(33, 34));
+    });
+
+    test('still drops a genuinely far entry around midnight', () {
+      final now = DateTime.utc(2026, 10, 10, 15, 46); // 23:46 Taipei
+      final result = TdxTransitMapper.traArrivals([
+        _traRow(
+          trainType: '區間',
+          destination: '新竹',
+          scheduledDepartureTime: '05:00:00', // ~5h ahead, beyond the window
+        ),
+      ], now: now);
+
+      expect(result, isEmpty);
+    });
+
     test('sorts soonest first and caps at 3', () {
       final taipeiNow = DateTime.now().toUtc().add(const Duration(hours: 8));
 

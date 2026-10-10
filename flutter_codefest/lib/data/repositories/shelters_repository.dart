@@ -14,7 +14,9 @@ Map<String, String> clustersQueryParams({
   required double zoom,
   Set<String>? disasters,
   Set<String>? spaces,
+  Map<String, String>? scope,
 }) => {
+  ...?scope,
   if (bbox != null) 'bbox': bbox,
   // Whole-number zooms without the trailing ".0" — the cache key must be
   // stable across clients that format the same zoom differently.
@@ -44,8 +46,10 @@ Map<String, String> sheltersPageQueryParams({
   Set<String>? spaces,
   required int limit,
   required int offset,
+  Map<String, String>? scope,
 }) => {
   if (q != null && q.isNotEmpty) 'q': q,
+  ...?scope,
   if (disasters != null && disasters.isNotEmpty)
     'disasters': disasters.join(','),
   if (spaces != null && spaces.isNotEmpty) 'spaces': spaces.join(','),
@@ -75,11 +79,13 @@ Future<List<Shelter>> fetchNearbyShelters({
   int limit = 10,
   Set<String>? disasters,
   Set<String>? spaces,
+  Map<String, String>? scope,
 }) async {
   final body =
       await ApiService.get(
             '/shelters/nearby',
             queryParams: {
+              ...?scope,
               'lat': '$lat',
               'lng': '$lng',
               if (radiusMeters != null) 'radius': '$radiusMeters',

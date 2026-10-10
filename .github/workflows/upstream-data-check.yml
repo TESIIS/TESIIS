@@ -63,6 +63,34 @@ jobs:
             /tmp/shelters_rejected.csv
           retention-days: 90
 
+  check-alerts:
+    name: verify NCDR alert feed (region alerts)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+
+      # Read-only probe against the live Atom/CAP feed. It succeeds whenever
+      # the feed parses, even with zero active alerts; it fails only when the
+      # feed is unreachable or its schema changed enough that parsing breaks.
+      # No snapshot is written — alerts are live, not versioned data.
+      - name: Read the live alert feed
+        run: dart run tool/check_alert_source.dart | tee /tmp/alert-report.json
+
+      - name: Upload alert source report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alert-source-report
+          path: /tmp/alert-report.json
+          retention-days: 90
+
   check:
     name: verify upstream schema and coverage (臺北市 secondary pipeline)
     runs-on: ubuntu-latest

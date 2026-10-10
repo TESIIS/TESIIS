@@ -4,11 +4,14 @@ import 'package:get_it/get_it.dart';
 
 import '../../data/datasources/external/nfa_shelter_api.dart';
 import '../../data/datasources/external/tdx_client.dart';
+import '../../data/datasources/external/ncdr_alert_source.dart';
 import '../../data/datasources/local/shelter_snapshot_source.dart';
 import '../../data/repositories_impl/shelter_repository_impl.dart';
 import '../../domain/repositories/shelter_repository.dart';
 import '../../domain/services/shelter_service.dart';
 import '../../domain/services/transit_service.dart';
+import '../../domain/services/alert_service.dart';
+import '../../presentation/controllers/alert_controller.dart';
 import '../../presentation/controllers/shelter_controller.dart';
 import '../../presentation/controllers/transit_controller.dart';
 import '../config/env.dart';
@@ -65,6 +68,14 @@ ShelterSnapshotSource loadShelterSnapshot() {
 }
 
 void setupDependencies({required ShelterSnapshotSource snapshot}) {
+  getIt.registerLazySingleton<AlertService>(
+    () => AlertService(
+      source: NcdrAlertSource(feedUri: Uri.parse(Env.alertFeedUrl)),
+    ),
+  );
+  getIt.registerFactory<AlertController>(
+    () => AlertController(service: getIt()),
+  );
   getIt.registerLazySingleton<NfaShelterApi>(NfaShelterApi.new);
   getIt.registerSingleton<ShelterSnapshotSource>(snapshot);
 

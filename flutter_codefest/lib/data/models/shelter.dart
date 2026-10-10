@@ -38,6 +38,7 @@ class Shelter {
     this.coordinateSource,
     this.coordinateConfidence,
     this.distanceMeters,
+    this.dataObtainedAt,
   });
 
   final int id;
@@ -92,6 +93,16 @@ class Shelter {
 
   /// Only present in `GET /api/shelters/nearby` responses.
   final int? distanceMeters;
+  final DateTime? dataObtainedAt;
+
+  bool get isNfa =>
+      coordinateSource == 'nfa_point_file' || shelterId.startsWith('NFA-');
+  String get accessibilityLabel => isNfa ? '適合避難弱者安置' : '無障礙設施';
+  static String flagLabel(String value) => switch (value) {
+    'Y' => '有',
+    'N' => '無',
+    _ => '未提供',
+  };
 
   bool get hasCoordinate => latitude != null && longitude != null;
 
@@ -146,6 +157,7 @@ class Shelter {
       coordinateSource: json['座標來源'] as String?,
       coordinateConfidence: json['座標精度'] as String?,
       distanceMeters: json['距離公尺'] is int ? json['距離公尺'] as int : null,
+      dataObtainedAt: DateTime.tryParse(json['資料取得時間']?.toString() ?? ''),
     );
   }
 
@@ -181,5 +193,7 @@ class Shelter {
     '座標x': longitude,
     '座標來源': coordinateSource,
     '座標精度': coordinateConfidence,
+    if (distanceMeters != null) '距離公尺': distanceMeters,
+    if (dataObtainedAt != null) '資料取得時間': dataObtainedAt!.toIso8601String(),
   };
 }

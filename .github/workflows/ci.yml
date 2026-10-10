@@ -50,11 +50,12 @@ jobs:
 
       - run: flutter pub get
       - run: flutter analyze
-      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart format --output=none --set-exit-if-changed lib test tool
       - run: flutter test
       # Proves the web target still compiles. No API key is needed — that is
       # the point of the NLSC basemap.
-      - run: flutter build web --dart-define=API_BASE_URL=/api
+      - run: flutter build web --base-href /app/ --dart-define=API_BASE_URL=/api
+      - run: dart run tool/prepare_web.dart
 
   containers:
     name: Docker Compose build

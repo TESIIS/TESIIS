@@ -27,6 +27,7 @@ typedef FetchNearbyShelters =
       int limit,
       Set<String>? disasters,
       Set<String>? spaces,
+      Map<String, String>? scope,
     });
 typedef IsLocationServiceEnabled = Future<bool> Function();
 typedef CheckPermission = Future<LocationPermission> Function();
@@ -112,6 +113,14 @@ class ShelterMapViewModel extends ChangeNotifier {
   int _previewRequestId = 0;
 
   Position? _currentPosition;
+  LatLng? _searchOrigin;
+  String? _city;
+  String? _township;
+  bool _vulnerableOnly = false;
+  bool _fixedRadius = false;
+  bool _disposed = false;
+  bool _browseAll = false;
+  int _originRevision = 0;
   Shelter? _selectedShelter;
   bool _showShelterDetails = false;
 
@@ -162,6 +171,20 @@ class ShelterMapViewModel extends ChangeNotifier {
   bool get isLoadingPreview => _isLoadingPreview;
 
   Position? get currentPosition => _currentPosition;
+  LatLng? get searchOrigin => _searchOrigin;
+  LatLng? get queryOrigin => _searchOrigin ?? currentLatLng;
+  String? get city => _city;
+  String? get township => _township;
+  bool get vulnerableOnly => _vulnerableOnly;
+  Map<String, String> get queryScope => {
+    if (_city != null) 'city': _city!,
+    if (_township != null) 'township': _township!,
+    if (_vulnerableOnly) 'vulnerable': 'Y',
+  };
+  bool get hasFilters =>
+      queryScope.isNotEmpty ||
+      _selectedDisasterTypes.isNotEmpty ||
+      _selectedSpaceTypes.isNotEmpty;
   LatLng? get currentLatLng => _currentPosition == null
       ? null
       : LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
@@ -188,7 +211,70 @@ class ShelterMapViewModel extends ChangeNotifier {
   /// True when the server is not serving live upstream data, so the map is
   /// showing something older than it looks.
   bool get isServingStaleData =>
-      _dataFreshness != null && _dataFreshness != 'live';
+      _dataFreshness != null &&
+      _dataFreshness != 'live' &&
+      _dataFreshness != 'offline';
+
+  bool get isOfflineData => _dataFreshness == 'offline';
+
+  Future<void> setRegion(
+    String? city,
+    String? township, {
+    bool? vulnerableOnly,
+  }) async {
+    _city = city;
+    _township = township;
+    if (vulnerableOnly != null) _vulnerableOnly = vulnerableOnly;
+    _isSearching = true;
+    await _refreshAfterFilterChange();
+  }
+
+  Future<void> setSearchOrigin(LatLng point, {double radius = 3000}) async {
+    _originRevision++;
+    _searchOrigin = point;
+    _fixedRadius = true;
+    _nearbyRadiusMeters = radius;
+    _isSearching = true;
+    _searchQuery = '';
+    _searchRequestId++;
+    _searchResults = const [];
+    await _refreshAfterFilterChange();
+  }
+
+  Future<void> refreshData() => _refreshAfterFilterChange();
+
+  /// A region chosen from a bulletin starts a new, explicit shelter query.
+  /// Unrelated old keywords, radii and disaster chips must not hide its results.
+  Future<void> browseAlertRegion(String city, String? township) async {
+    _originRevision++;
+    _searchOrigin = null;
+    _fixedRadius = false;
+    _searchQuery = '';
+    _selectedDisasterTypes.clear();
+    _selectedSpaceTypes.clear();
+    _vulnerableOnly = false;
+    _browseAll = true;
+    clearSelection();
+    await setRegion(city, township);
+  }
+
+  Future<void> clearSearchOrigin() async {
+    _originRevision++;
+    _searchOrigin = null;
+    _fixedRadius = false;
+    await _refreshAfterFilterChange();
+  }
+
+  Future<void> browseAll() async {
+    _browseAll = true;
+    _isSearching = true;
+    await _loadSearchPreview();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   // ---------------------------------------------------------------------
   // Map clusters
@@ -215,6 +301,7 @@ class ShelterMapViewModel extends ChangeNotifier {
         ? null
         : '${capped.west},${capped.south},${capped.east},${capped.north}';
     final params = repo.clustersQueryParams(
+      scope: queryScope,
       bbox: bbox,
       zoom: zoom,
       disasters: _selectedDisasterTypes.isEmpty ? null : _selectedDisasterTypes,
@@ -229,7 +316,9 @@ class ShelterMapViewModel extends ChangeNotifier {
       _dataFreshness = page.dataFreshness;
       _isShowingCachedData = false;
       _cachedAt = null;
-      unawaited(_cachePut(key, page.toJson()));
+      if (page.dataFreshness != 'offline') {
+        unawaited(_cachePut(key, page.toJson()));
+      }
       notifyListeners();
     } catch (_) {
       final cached = await _cacheGet(key);
@@ -242,6 +331,8 @@ class ShelterMapViewModel extends ChangeNotifier {
         _cachedAt = cached.cachedAt;
       } else {
         _clusters = const [];
+        _dataFreshness = null;
+        _isShowingCachedData = false;
         _locationMessage = '無法連線到伺服器，請確認後端已啟動';
         _isLocationSuccess = false;
       }
@@ -271,6 +362,7 @@ class ShelterMapViewModel extends ChangeNotifier {
       limit: count,
       disasters: _selectedDisasterTypes.isEmpty ? null : _selectedDisasterTypes,
       spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
+      scope: queryScope,
     );
   }
 
@@ -359,11 +451,22 @@ class ShelterMapViewModel extends ChangeNotifier {
     unawaited(_refreshAfterFilterChange());
   }
 
-  /// Re-fetches whatever the current filters should be applied to. Failures
-  /// are swallowed — the user already got a SnackBar for the initial search,
-  /// and keeping the previous results on screen beats an unhandled async
-  /// error when a chip toggle re-query flakes.
+  /// Re-fetches all query surfaces and reports failures without retaining rows
+  /// from a different set of conditions.
   Future<void> _refreshAfterFilterChange() async {
+    // Invalidate and clear old results immediately; no stale unfiltered rows
+    // remain labelled as though they satisfy newly selected conditions.
+    _clusterRequestId++;
+    _searchRequestId++;
+    _previewRequestId++;
+    _nearbyRequestId++;
+    _searchResults = const [];
+    _searchTotal = 0;
+    _searchHasMore = false;
+    _searchPreview = const [];
+    _nearbyShelters = const [];
+    _clusters = const [];
+    notifyListeners();
     try {
       if (_isSearching && _searchQuery.isNotEmpty) {
         await search(_searchQuery);
@@ -372,9 +475,14 @@ class ShelterMapViewModel extends ChangeNotifier {
       } else {
         await refreshClusters();
       }
+      if (queryOrigin != null) {
+        await _loadNearbyShelters(queryOrigin!, _nearbyRadiusMeters);
+      }
     } catch (_) {
-      // Keep whatever is on screen.
+      _locationMessage = '無法載入符合條件的資料，請確認連線或離線資料範圍';
+      _isLocationSuccess = false;
     }
+    notifyListeners();
   }
 
   /// Fetches the first page of results for [query]. Throws on network
@@ -394,6 +502,9 @@ class ShelterMapViewModel extends ChangeNotifier {
       unawaited(_loadSearchPreview());
       return;
     }
+    _searchResults = const [];
+    _searchTotal = 0;
+    _searchHasMore = false;
     await _fetchSearchPage(offset: 0, requestId: ++_searchRequestId);
   }
 
@@ -404,9 +515,23 @@ class ShelterMapViewModel extends ChangeNotifier {
   /// nearest first" already. Requires a known position; with none yet, the
   /// preview just stays empty rather than guessing.
   Future<void> _loadSearchPreview() async {
-    final position = _currentPosition;
+    final position = queryOrigin;
     if (position == null) {
-      _searchPreview = const [];
+      if (_browseAll ||
+          queryScope.isNotEmpty ||
+          _selectedDisasterTypes.isNotEmpty ||
+          _selectedSpaceTypes.isNotEmpty) {
+        try {
+          await _fetchSearchPage(offset: 0, requestId: ++_searchRequestId);
+          _searchPreview = _searchResults;
+        } catch (_) {
+          _searchPreview = const [];
+          _locationMessage = '無法載入清單，請確認連線或先下載區域資料';
+          _isLocationSuccess = false;
+        }
+      } else {
+        _searchPreview = const [];
+      }
       notifyListeners();
       return;
     }
@@ -418,6 +543,8 @@ class ShelterMapViewModel extends ChangeNotifier {
         lat: position.latitude,
         lng: position.longitude,
         limit: searchPageSize,
+        radiusMeters: _fixedRadius ? _nearbyRadiusMeters : null,
+        scope: queryScope,
         disasters: _selectedDisasterTypes.isEmpty
             ? null
             : _selectedDisasterTypes,
@@ -441,6 +568,10 @@ class ShelterMapViewModel extends ChangeNotifier {
   Future<void> loadMoreSearch() async {
     if (!_searchHasMore || _isLoadingMore) return;
     await _fetchSearchPage(offset: _searchOffset, requestId: _searchRequestId);
+    if (_searchQuery.isEmpty && queryOrigin == null) {
+      _searchPreview = _searchResults;
+      notifyListeners();
+    }
   }
 
   Future<void> _fetchSearchPage({
@@ -451,6 +582,14 @@ class ShelterMapViewModel extends ChangeNotifier {
     notifyListeners();
 
     final params = repo.sheltersPageQueryParams(
+      scope: {
+        ...queryScope,
+        if (_searchOrigin != null) ...{
+          'lat': '${_searchOrigin!.latitude}',
+          'lng': '${_searchOrigin!.longitude}',
+          'radius': '$_nearbyRadiusMeters',
+        },
+      },
       q: _searchQuery,
       disasters: _selectedDisasterTypes.isEmpty ? null : _selectedDisasterTypes,
       spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
@@ -471,7 +610,9 @@ class ShelterMapViewModel extends ChangeNotifier {
       _dataFreshness = page.dataFreshness ?? _dataFreshness;
       _isShowingCachedData = false;
       _cachedAt = null;
-      unawaited(_cachePut(key, page.toJson()));
+      if (page.dataFreshness != 'offline') {
+        unawaited(_cachePut(key, page.toJson()));
+      }
     } catch (_) {
       if (requestId != _searchRequestId) return;
       if (offset == 0) {
@@ -484,6 +625,7 @@ class ShelterMapViewModel extends ChangeNotifier {
           _searchOffset = page.shelters.length;
           _searchHasMore = page.truncated;
           _isShowingCachedData = true;
+          _dataFreshness = page.dataFreshness;
           _cachedAt = cached.cachedAt;
         } else {
           rethrow;
@@ -525,6 +667,7 @@ class ShelterMapViewModel extends ChangeNotifier {
   }
 
   Future<void> getCurrentLocation({double? radiusMeters}) async {
+    final originRevision = ++_originRevision;
     _isLoadingLocation = true;
     _locationMessage = null;
     notifyListeners();
@@ -550,10 +693,14 @@ class ShelterMapViewModel extends ChangeNotifier {
         // Not supported on this platform — fall through to a fresh fix.
       }
       if (_isValidPosition(lastKnown)) {
-        await _applyLocatedPosition(lastKnown!, requestedRadius);
+        await _applyLocatedPosition(
+          lastKnown!,
+          requestedRadius,
+          originRevision,
+        );
         _isLoadingLocation = false;
         notifyListeners();
-        unawaited(_refreshCurrentPosition(requestedRadius));
+        unawaited(_refreshCurrentPosition(requestedRadius, originRevision));
         return;
       }
 
@@ -564,7 +711,7 @@ class ShelterMapViewModel extends ChangeNotifier {
         return;
       }
 
-      await _applyLocatedPosition(position, requestedRadius);
+      await _applyLocatedPosition(position, requestedRadius, originRevision);
     } on TimeoutException {
       _locationMessage = '定位逾時，請確認訊號後再試一次';
       _isLocationSuccess = false;
@@ -578,21 +725,26 @@ class ShelterMapViewModel extends ChangeNotifier {
   }
 
   Future<void> refreshNearbyShelters({double? radiusMeters}) async {
-    final position = _currentPosition;
+    final position = queryOrigin;
     if (position == null) return;
 
-    final requestedRadius = radiusMeters ?? _nearbyRadiusMeters;
+    final requestedRadius = _fixedRadius
+        ? _nearbyRadiusMeters
+        : radiusMeters ?? _nearbyRadiusMeters;
     if ((requestedRadius - _nearbyRadiusMeters).abs() < 1) return;
 
     await _loadNearbyShelters(position, requestedRadius);
     notifyListeners();
   }
 
-  Future<void> _refreshCurrentPosition(double radiusMeters) async {
+  Future<void> _refreshCurrentPosition(
+    double radiusMeters,
+    int originRevision,
+  ) async {
     try {
       final position = await _getCurrentPosition();
       if (!_isValidPosition(position)) return;
-      await _applyLocatedPosition(position, radiusMeters);
+      await _applyLocatedPosition(position, radiusMeters, originRevision);
       notifyListeners();
     } catch (_) {
       // A cached location is already on screen. Keep it if the fresh fix
@@ -603,9 +755,17 @@ class ShelterMapViewModel extends ChangeNotifier {
   Future<void> _applyLocatedPosition(
     Position position,
     double radiusMeters,
+    int originRevision,
   ) async {
+    if (originRevision == _originRevision) {
+      _searchOrigin = null;
+      _fixedRadius = false;
+    }
     _currentPosition = position;
-    await _loadNearbyShelters(position, radiusMeters);
+    await _loadNearbyShelters(
+      queryOrigin!,
+      _fixedRadius ? _nearbyRadiusMeters : radiusMeters,
+    );
     // Search may have been opened before a position was known (the preview
     // load then found nothing to show) — now that one exists, fill it in.
     if (_isSearching && _searchQuery.isEmpty) {
@@ -626,10 +786,7 @@ class ShelterMapViewModel extends ChangeNotifier {
     });
   }
 
-  Future<void> _loadNearbyShelters(
-    Position position,
-    double radiusMeters,
-  ) async {
+  Future<void> _loadNearbyShelters(LatLng position, double radiusMeters) async {
     final id = ++_nearbyRequestId;
     _nearbyRadiusMeters = radiusMeters;
     try {
@@ -638,6 +795,11 @@ class ShelterMapViewModel extends ChangeNotifier {
         lng: position.longitude,
         radiusMeters: radiusMeters,
         limit: 5,
+        disasters: _selectedDisasterTypes.isEmpty
+            ? null
+            : _selectedDisasterTypes,
+        spaces: _selectedSpaceTypes.isEmpty ? null : _selectedSpaceTypes,
+        scope: queryScope,
       );
       if (id != _nearbyRequestId) return;
       _nearbyShelters = nearby;
@@ -653,6 +815,7 @@ class ShelterMapViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _messageDismissTimer?.cancel();
     super.dispose();
   }

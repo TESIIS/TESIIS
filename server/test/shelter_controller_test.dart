@@ -65,6 +65,81 @@ void main() {
         ),
       );
 
+  group('preparedness endpoints', () {
+    final rows = [
+      shelter(id: 1, shelterCode: 'stable-a', name: '臺北Ａ館', x: 121.5, y: 25.03),
+      shelter(id: 2, shelterCode: 'stable-b', township: '大同區'),
+      shelter(id: 3, city: '高雄市', township: '苓雅區'),
+    ];
+
+    test(
+      'detail resolves a stable code and missing links return 404',
+      () async {
+        final response = await get(controllerFor(rows), '/shelters/stable-a');
+        expect(response['status'], 200);
+        expect(response['body']['data']['名稱'], '臺北Ａ館');
+        expect((await get(controllerFor(rows), '/shelters/1'))['status'], 404);
+        expect(
+          (await get(controllerFor(rows), '/shelters/stats'))['status'],
+          200,
+        );
+      },
+    );
+
+    test(
+      'package is a complete versioned region from one generation',
+      () async {
+        final repository = _FakeRepository(rows);
+        final controller = ShelterController(
+          service: ShelterService(repository: repository),
+        );
+        final response = await get(controller, '/shelters/package?city=台北市');
+        final body = response['body'] as Map;
+        expect(response['status'], 200);
+        expect(repository.calls, 1);
+        expect(body['schemaVersion'], 1);
+        expect(body['total'], 2);
+        expect(body['truncated'], false);
+        expect(body['coverage'], {'city': '臺北市'});
+        expect(body['snapshotVersion'], startsWith('nfa-v1-'));
+        final district = await get(
+          controller,
+          '/shelters/package?city=臺北市&township=大同區',
+        );
+        expect(district['body']['total'], 1);
+        for (final query in [
+          '',
+          '?city=不存在',
+          '?city=臺北市&township=不存在',
+          '?city=臺北市&limit=1',
+          '?city=臺北市&flood=Y',
+        ]) {
+          expect(
+            (await get(controller, '/shelters/package$query'))['status'],
+            400,
+          );
+        }
+      },
+    );
+
+    test('search normalizes 台/臺, full width and letter case', () async {
+      final response = await get(controllerFor(rows), '/shelters?q=台北a');
+      expect(response['body']['total'], 1);
+    });
+
+    test('nonfinite location, radius and zoom are rejected', () async {
+      for (final path in [
+        '/shelters/nearby?lat=NaN&lng=121',
+        '/shelters/nearby?lat=91&lng=121',
+        '/shelters/nearby?lat=25&lng=121&radius=-1',
+        '/shelters/clusters?zoom=NaN',
+        '/shelters?bbox=NaN,24,122,26',
+      ]) {
+        expect((await get(controllerFor(rows), path))['status'], 400);
+      }
+    });
+  });
+
   group('GET /shelters', () {
     final data = [
       shelter(
@@ -252,6 +327,20 @@ void main() {
       );
       expect(((res['body'] as Map)['data'] as List).length, 1);
       expect((res['body'] as Map)['total'], 2, reason: 'total is pre-limit');
+    });
+
+    test('paginated text search can use the same origin and radius', () async {
+      final res = await get(
+        controllerFor(data),
+        '/shelters?q=的&lat=25.0478&lng=121.5170&radius=500&limit=1',
+      );
+      expect(res['status'], 200);
+      expect(res['body']['total'], 1);
+      expect(res['body']['data'][0]['名稱'], '近的');
+      expect(
+        (await get(controllerFor(data), '/shelters?lat=NaN&lng=121'))['status'],
+        400,
+      );
     });
 
     test('missing or malformed coordinates are a 400', () async {

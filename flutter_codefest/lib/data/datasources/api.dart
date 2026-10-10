@@ -2,6 +2,11 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+class ApiException implements Exception {
+  const ApiException(this.statusCode);
+  final int statusCode;
+}
+
 class ApiService {
   /// Where the Dart backend lives.
   ///
@@ -50,7 +55,7 @@ class ApiService {
         );
 
     if (response.statusCode != 200) {
-      throw Exception('GET $endpoint failed: ${response.statusCode}');
+      throw ApiException(response.statusCode);
     }
     // The server sends UTF-8; decoding the bytes explicitly avoids the
     // latin-1 fallback that mangles every Chinese field.

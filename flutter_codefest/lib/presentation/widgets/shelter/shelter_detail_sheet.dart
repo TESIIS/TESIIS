@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_codefest/presentation/widgets/common/disaster_chip.dart'
 import 'package:flutter_codefest/presentation/widgets/common/info_row.dart';
 import 'package:flutter_codefest/presentation/widgets/shelter/nearby_transit_section.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// A shelter's full detail.
 ///
@@ -27,6 +29,10 @@ class ShelterDetailSheet extends StatefulWidget {
     required this.onNavigate,
     this.wide = false,
     this.visible = true,
+    this.onFavorite,
+    this.isFavorite = false,
+    this.onShare,
+    this.showTransit = true,
   });
 
   final Shelter shelter;
@@ -35,6 +41,10 @@ class ShelterDetailSheet extends StatefulWidget {
   final VoidCallback onNavigate;
   final bool wide;
   final bool visible;
+  final VoidCallback? onFavorite;
+  final bool isFavorite;
+  final VoidCallback? onShare;
+  final bool showTransit;
 
   @override
   State<ShelterDetailSheet> createState() => _ShelterDetailSheetState();
@@ -216,10 +226,34 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
               ),
             ),
           ),
-          IconButton(icon: const Icon(Icons.close), onPressed: widget.onClose),
+          IconButton(
+            tooltip: '關閉詳情',
+            icon: const Icon(Icons.close),
+            onPressed: widget.onClose,
+          ),
         ],
       ),
       const Divider(height: 24),
+      if (widget.onFavorite != null || widget.onShare != null)
+        Wrap(
+          spacing: 8,
+          children: [
+            if (widget.onFavorite != null)
+              OutlinedButton.icon(
+                onPressed: widget.onFavorite,
+                icon: Icon(
+                  widget.isFavorite ? Icons.bookmark : Icons.bookmark_border,
+                ),
+                label: Text(widget.isFavorite ? '編輯收藏' : '收藏'),
+              ),
+            if (widget.onShare != null)
+              OutlinedButton.icon(
+                onPressed: widget.onShare,
+                icon: const Icon(Icons.share_outlined),
+                label: const Text('分享'),
+              ),
+          ],
+        ),
 
       if (canNavigate) ...[
         SizedBox(
@@ -273,6 +307,26 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
       CoordinateNotice(shelter: shelter),
 
       InfoRow(label: '地址', value: shelter.address),
+      if (shelter.address.isNotEmpty)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(
+                ClipboardData(
+                  text: '${shelter.city}${shelter.district} ${shelter.address}',
+                ),
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已複製地址')));
+              }
+            },
+            icon: const Icon(Icons.copy, size: 16),
+            label: const Text('複製地址'),
+          ),
+        ),
       InfoRow(label: '行政區', value: shelter.district),
       InfoRow(label: '里', value: shelter.village),
       InfoRow(label: '郵遞區號', value: shelter.postalCode),
@@ -280,7 +334,8 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
       if (shelter.flood == 'Y' ||
           shelter.earthquake == 'Y' ||
           shelter.landslide == 'Y' ||
-          shelter.tsunami == 'Y') ...[
+          shelter.tsunami == 'Y' ||
+          shelter.nuclear == 'Y') ...[
         const SizedBox(height: 16),
         _SectionTitle('災害類型'),
         const SizedBox(height: 8),
@@ -296,6 +351,8 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
               const DisasterChip(label: '土石流', icon: Icons.landscape),
             if (shelter.tsunami == 'Y')
               const DisasterChip(label: '海嘯', icon: Icons.waves),
+            if (shelter.nuclear == 'Y')
+              const DisasterChip(label: '核子事故', icon: Icons.warning_amber),
           ],
         ),
         const SizedBox(height: 16),
@@ -304,7 +361,10 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
       _SectionTitle('設施資訊'),
       const SizedBox(height: 8),
       InfoRow(label: '類型', value: shelter.type),
-      InfoRow(label: '收容人數', value: '${shelter.capacity} 人'),
+      InfoRow(
+        label: '預計收容人數',
+        value: shelter.capacity > 0 ? '${shelter.capacity} 人' : '未提供',
+      ),
       if (shelter.area.isNotEmpty)
         InfoRow(
           label: '面積',
@@ -314,9 +374,12 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
               ? '${shelter.area} ㎡'
               : shelter.area,
         ),
-      InfoRow(label: '室內空間', value: shelter.indoor == 'Y' ? '有' : '無'),
-      InfoRow(label: '室外空間', value: shelter.outdoor == 'Y' ? '有' : '無'),
-      InfoRow(label: '無障礙設施', value: shelter.accessible == 'Y' ? '有' : '無'),
+      InfoRow(label: '室內空間', value: Shelter.flagLabel(shelter.indoor)),
+      InfoRow(label: '室外空間', value: Shelter.flagLabel(shelter.outdoor)),
+      InfoRow(
+        label: shelter.accessibilityLabel,
+        value: Shelter.flagLabel(shelter.accessible),
+      ),
       // Unlike indoor/outdoor/accessible, NFA carries no equivalent of this
       // field at all — every nationwide shelter's reliefStation arrives as
       // '', not a real 'N'. Falling through to "否" the way the other three
@@ -332,7 +395,7 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
         },
       ),
 
-      if (shelter.hasCoordinate)
+      if (shelter.hasCoordinate && widget.showTransit)
         NearbyTransitSection(
           // Without a key tied to the shelter, selecting a different one
           // reuses the same State object — its `late final` fetch Future
@@ -351,9 +414,17 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
       _SectionTitle('聯絡資訊'),
       const SizedBox(height: 8),
       InfoRow(label: '聯絡人', value: shelter.contactName),
-      InfoRow(label: '聯絡電話', value: shelter.contactPhone),
+      if (shelter.contactPhone.isNotEmpty)
+        _phone(context, '聯絡電話', shelter.contactPhone),
       InfoRow(label: '管理人', value: shelter.managerName),
-      InfoRow(label: '管理人電話', value: shelter.managerPhone),
+      if (shelter.managerPhone.isNotEmpty)
+        _phone(context, '管理人電話', shelter.managerPhone),
+      if (shelter.isNfa) const InfoRow(label: '資料來源', value: '內政部消防署避難收容處所點位檔'),
+      if (shelter.dataObtainedAt != null)
+        InfoRow(
+          label: '資料取得時間',
+          value: shelter.dataObtainedAt!.toLocal().toString().substring(0, 16),
+        ),
 
       if (shelter.remarks.isNotEmpty) ...[
         const SizedBox(height: 16),
@@ -366,6 +437,50 @@ class _ShelterDetailSheetState extends State<ShelterDetailSheet>
       ],
     ];
   }
+
+  Widget _phone(BuildContext context, String label, String phone) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('$label：'),
+        TextButton.icon(
+          onPressed: () async {
+            final number = phone
+                .split(RegExp(r'分機|轉|#|ext\.?', caseSensitive: false))
+                .first
+                .replaceAll(RegExp(r'[^0-9+]'), '');
+            try {
+              if (number.isEmpty ||
+                  !await launchUrl(Uri(scheme: 'tel', path: number))) {
+                throw StateError('dial failed');
+              }
+            } catch (_) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('無法開啟撥號，可使用旁邊的按鈕複製電話')),
+                );
+              }
+            }
+          },
+          icon: const Icon(Icons.call_outlined, size: 18),
+          label: Text(phone),
+        ),
+        IconButton(
+          tooltip: '複製$label',
+          icon: const Icon(Icons.copy, size: 18),
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: phone));
+            if (context.mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('已複製電話')));
+            }
+          },
+        ),
+      ],
+    ),
+  );
 }
 
 class _SectionTitle extends StatelessWidget {

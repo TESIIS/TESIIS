@@ -47,7 +47,7 @@ class ShelterService {
 
   List<String> _normalizeKeywords(String? raw) {
     if (raw == null) return const [];
-    return raw
+    return ShelterText.normalizeSearch(raw)
         .split(RegExp(r'[\s,、，]+'))
         .map((e) => e.trim().toLowerCase())
         .where((e) => e.isNotEmpty)
@@ -62,7 +62,7 @@ class ShelterService {
       final trimmed = (value ?? '').trim();
       if (trimmed.isEmpty) return;
       buffer
-        ..write(trimmed.toLowerCase())
+        ..write(ShelterText.normalizeSearch(trimmed))
         ..write(' ');
     }
 

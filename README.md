@@ -22,6 +22,16 @@
 - 使用內政部國土測繪中心 WMTS 底圖，可切換電子、地形與正射影像底圖。
 - 可從設施詳情一鍵開啟外部地圖導航。
 - 設施詳情顯示附近公車站／台鐵／高鐵站與距離（選填功能，需設定 TDX 憑證）。
+- 收藏避難所、分組與私人備註；以連結或 QR Code 分享單一地點，開啟連結即可還原詳情。
+- 依縣市／鄉鎮與弱者安置標示查詢；長按、右鍵或「指定查詢地點」可替家人查附近設施，無須取得 GPS。
+- 下載完整行政區的離線資料包，在裝置上重新搜尋、篩選、分群與計算距離；Web 可另備妥離線啟動資源。
+- 建立家庭主要／備用集合點、緊急聯絡資訊和準備清單，分享文字或下載含 QR Code 的離線避難卡，可列印成 PDF。
+- 收藏比較、精簡清單、大字模式、淺色／深色／跟隨系統主題，以及一鍵撥號、複製地址與電話。
+- 區域災害警報：接入 NCDR 官方 Atom／CAP 公告，依縣市／鄉鎮查詢、保存關注區域、查看更新／解除與到期狀態，並跳回地圖查詢該區避難所。
+
+從地圖上的「**我的避難準備**」進入收藏、家庭計畫、離線資料與設定。完整操作與離線建置方式見 [生活圈避難準備](docs/preparedness.md)。
+
+地圖工具列的「**區域災害警報**」可查看官方公告；不需 API Key。警報的快取、有效時間與資料不完整狀態會分別標示，說明見 [區域災害警報](docs/alerts.md)。
 
 ## 快速開始
 
@@ -68,8 +78,11 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8080/api
 不需要設定 API Key。Flutter Web 建置正式版時，指定後端位置：
 
 ```bash
-flutter build web --dart-define=API_BASE_URL=https://api.example.tw/api
+flutter build web --base-href /app/ --dart-define=API_BASE_URL=https://api.example.tw/api
+dart run tool/prepare_web.dart
 ```
+
+第二個命令會產生離線啟動資源清單；部署時發布完整的 `build/web/`。Docker 與 CI 已包含這一步。Service Worker 需要 HTTPS 或 localhost。
 
 ## 架構
 
@@ -130,10 +143,13 @@ dart run tool/build_nationwide_snapshot.dart --refresh --report
 | --- | --- |
 | `GET /healthz` | 服務、資料來源與快照健康狀態 |
 | `GET /api/shelters` | 搜尋與篩選設施 |
+| `GET /api/shelters/<shelterCode>` | 依收容所編號取得單筆資料；編號已不存在時回 404 |
+| `GET /api/shelters/package?city=&township=` | 下載同一資料版本的完整縣市／鄉鎮資料包；`city` 必填 |
 | `GET /api/shelters/nearby` | 依座標與半徑找最近設施 |
 | `GET /api/shelters/clusters` | 依地圖範圍與縮放層級取得分群標記 |
 | `GET /api/shelters/stats` | 資料筆數與座標品質統計 |
 | `GET /api/regions` | 縣市或鄉鎮的資料品質摘要 |
+| `GET /api/alerts?city=&township=&history=` | NCDR 公告、資料取得狀態與有效時間；無可用資料時回 503 |
 | `GET /api/transit/nearby` | 避難所附近的公車站／台鐵／高鐵站（需設定 TDX 憑證，見下） |
 
 常用請求範例：
@@ -142,6 +158,7 @@ dart run tool/build_nationwide_snapshot.dart --refresh --report
 curl 'http://localhost:8080/api/shelters/nearby?lat=25.0478&lng=121.5170&radius=800&limit=3'
 curl 'http://localhost:8080/api/shelters/clusters?bbox=121.45,25.00,121.60,25.10&zoom=13'
 curl 'http://localhost:8080/api/regions?city=臺北市'
+curl 'http://localhost:8080/api/shelters/package?city=臺北市&township=中正區'
 curl 'http://localhost:8080/api/transit/nearby?lat=25.0478&lng=121.5170&city=臺北市&radius=800'
 ```
 
@@ -151,6 +168,8 @@ curl 'http://localhost:8080/api/transit/nearby?lat=25.0478&lng=121.5170&city=臺
 只能按縣市查；沒帶 `city` 就只回台鐵／高鐵站點，不算失敗。半徑會 clamp 到 TDX
 自己的 1000 公尺硬限制。目前不含捷運（Metro）——TDX 沒有跨系統的全國附近站點
 端點，留待之後有需要再做（見 [docs/nationwide-roadmap.md](docs/nationwide-roadmap.md) 的 Phase 4）。
+
+`/api/shelters` 也接受 `lat`、`lng`、正數 `radius`，在指定起點附近搜尋並依直線距離排序後分頁。`vulnerable=Y` 依全國來源的「適合避難弱者安置」篩選；這個標示不代表已查證輪椅入口、電梯或無障礙廁所。既有中文欄位與 `accessible` 查詢參數保留相容性。
 
 ## 設定
 
@@ -164,6 +183,7 @@ curl 'http://localhost:8080/api/transit/nearby?lat=25.0478&lng=121.5170&city=臺
 | `CACHE_TTL_SECONDS` | `600` | 上游資料快取秒數；`0` 代表不使用快取 |
 | `LOG_LEVEL` | `info` | `debug`、`info`、`warn` 或 `error` |
 | `NFA_POINT_FILE_URL` | 消防署官方網址 | 覆寫點位檔來源 |
+| `ALERT_FEED_URL` | `https://alerts.ncdr.nat.gov.tw/RssAtomFeed.ashx` | NCDR 警報來源；一般部署直接使用預設值，覆寫供代理或測試使用 |
 | `UPSTREAM_BASE_URL` | `https://data.taipei/api/v1/dataset` | 僅離線工具 `build_coordinates.dart` 使用；可指向 proxy |
 | `TDX_CLIENT_ID` / `TDX_CLIENT_SECRET` | （空） | TDX 憑證，選填。留空時 `/api/transit/*` 回 503，系統其餘部分不受影響 |
 | `TDX_TIMEOUT_SECONDS` | `5` | 對 TDX 的單次請求逾時秒數 |

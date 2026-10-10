@@ -42,5 +42,6 @@ class ShelterPage {
     'data': [for (final s in shelters) s.toJson()],
     'total': total,
     'truncated': truncated,
+    if (dataFreshness != null) 'dataFreshness': dataFreshness,
   };
 }

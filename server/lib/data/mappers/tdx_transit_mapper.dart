@@ -127,6 +127,7 @@ class TdxTransitMapper {
   }
 
   static const _maxArrivalsPerStop = 3;
+  static const _minutesPerDay = 24 * 60;
 
   /// Groups `Bus/EstimatedTimeOfArrival` rows by `StopUID`, soonest first.
   ///
@@ -170,12 +171,18 @@ class TdxTransitMapper {
   /// server process itself may run in UTC (a VPS commonly does). Results
   /// outside a [-2, 180] minute window are dropped: a live board only ever
   /// lists near-term departures, so anything further out is almost
-  /// certainly a same-clock-time entry that actually belongs to the next
-  /// calendar day, not a legitimate multi-hour-out arrival — handling the
-  /// midnight rollover properly isn't worth it for a display that only
-  /// shows the next few minutes anyway.
-  static List<TransitArrival> traArrivals(List<dynamic> rows) {
-    final now = DateTime.now().toUtc().add(const Duration(hours: 8));
+  /// certainly a same-clock-time entry that actually belongs to another
+  /// calendar day, not a legitimate multi-hour-out arrival.
+  ///
+  /// The one rollover that matters is handled: past midnight the board still
+  /// lists departures a few minutes ahead whose small `HH:mm` parses as
+  /// *today* morning and therefore looks ~24h in the past — those are rolled
+  /// forward a day when doing so lands them back inside the window. Without
+  /// this, the whole near-term list vanished between roughly 23:00 and 01:00.
+  ///
+  /// [now] is overridable for tests; production callers use the real clock.
+  static List<TransitArrival> traArrivals(List<dynamic> rows, {DateTime? now}) {
+    now = (now ?? DateTime.now()).toUtc().add(const Duration(hours: 8));
     final today = DateTime.utc(now.year, now.month, now.day);
 
     final out = <TransitArrival>[];
@@ -198,7 +205,15 @@ class TdxTransitMapper {
       final departure = today.add(
         Duration(hours: hour, minutes: minute, seconds: second),
       );
-      final minutesUntil = departure.difference(now).inMinutes;
+      var minutesUntil = departure.difference(now).inMinutes;
+      // A bare time cannot say which day it belongs to. Just past midnight a
+      // departure a few minutes ahead is written as a small HH:mm that parses
+      // as today's early morning and looks ~24h in the past; roll it forward
+      // when that brings it back inside the near-term window. Anything still
+      // outside [-2, 180] is dropped.
+      if (minutesUntil < -2 && minutesUntil + _minutesPerDay <= 180) {
+        minutesUntil += _minutesPerDay;
+      }
       if (minutesUntil < -2 || minutesUntil > 180) continue;
 
       final delay = (raw['DelayTime'] as num?)?.toInt();

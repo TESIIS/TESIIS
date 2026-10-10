@@ -70,6 +70,10 @@ class HazardFlag {
 
 /// Text quirks of the same dataset.
 class ShelterText {
+  /// Shared search vocabulary: 台/臺, full-width ASCII and case variants.
+  static String normalizeSearch(String raw) =>
+      ShelterAddress.toHalfWidth(raw).replaceAll('臺', '台').toLowerCase().trim();
+
   /// 服務里別 is 、-separated, but the raw data also contains a stray 。, a
   /// full-width ，, embedded newlines and one parenthesised note. Splitting on
   /// `[、，,]` alone mangles 4 of the 401 records, e.g.

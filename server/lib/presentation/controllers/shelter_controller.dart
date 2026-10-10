@@ -7,6 +7,7 @@ import 'package:shelf_router/shelf_router.dart';
 
 import '../../core/config/env.dart';
 import '../../core/geo/distance.dart';
+import '../../core/geo/city_codes.dart';
 import '../../core/geo/taiwan_bounds.dart' show GeoBox;
 import '../../domain/entities/shelter.dart';
 import '../../domain/entities/shelter_fields.dart';
@@ -91,7 +92,7 @@ class _ShelterQuery {
       return (null, 'bbox must be "minLng,minLat,maxLng,maxLat"');
     }
     final values = parts.map((p) => double.tryParse(p.trim())).toList();
-    if (values.any((v) => v == null)) {
+    if (values.any((v) => v == null || !v.isFinite)) {
       return (null, 'bbox must contain 4 numbers');
     }
     final minLng = values[0]!;
@@ -120,6 +121,7 @@ class _ShelterQuery {
     'nuclear': '核子事故',
     'relief': '救濟支站',
     'accessible': '無障礙設施',
+    'vulnerable': '無障礙設施',
     'indoor': '室內',
     'outdoor': '室外',
   };
@@ -259,6 +261,8 @@ class ShelterController {
     r.get('/shelters/clusters', _getShelterClusters);
     r.get('/shelters/stats', _getShelterStats);
     r.get('/shelters/nearby', _getNearbyShelters);
+    r.get('/shelters/package', _getPackage);
+    r.get('/shelters/<code>', _getShelter);
     r.get('/regions', _getRegions);
     return r;
   }
@@ -333,6 +337,13 @@ class ShelterController {
     '核子事故': HazardFlag.normalizeForOutput(e.nuclear),
     '救濟支站': HazardFlag.normalizeForOutput(e.relief),
     '無障礙設施': HazardFlag.normalizeForOutput(e.accessible),
+    '適合避難弱者安置':
+        e.sourceName == 'nfa_point_file' ||
+            e.coordinateSource == 'nfa_point_file'
+        ? HazardFlag.normalizeForOutput(e.accessible)
+        : null,
+    '資料來源': e.sourceName,
+    '資料取得時間': e.sourceUpdatedAt?.toIso8601String(),
     '室內': HazardFlag.normalizeForOutput(e.indoor),
     '室外': HazardFlag.normalizeForOutput(e.outdoor),
     '服務里別': ShelterText.splitVillages(e.serviceVillages),
@@ -351,6 +362,82 @@ class ShelterController {
     '座標精度': e.coordinateConfidence,
     if (distanceMeters != null) '距離公尺': distanceMeters.round(),
   };
+
+  /// Stable-code lookup used by bookmarks and links; row ordinals are not IDs.
+  Future<Response> _getShelter(Request request, String code) async {
+    try {
+      final data = await service.fetchAllShelters();
+      for (final shelter in data) {
+        if (shelter.shelterCode == code) {
+          return _ok({
+            'success': true,
+            ..._dataMeta(),
+            'data': _toJson(shelter),
+          });
+        }
+      }
+      return Response.notFound(
+        jsonEncode({'success': false, 'message': 'Shelter not found'}),
+        headers: _jsonHeaders,
+      );
+    } catch (e, s) {
+      return _serverError('GET /shelters/<code>', e, s);
+    }
+  }
+
+  /// A complete, unfiltered region from ONE repository generation. This avoids
+  /// mixing pages from different upstream refreshes in a downloadable package.
+  Future<Response> _getPackage(Request request) async {
+    try {
+      final params = request.url.queryParameters;
+      if (params.keys.any((k) => k != 'city' && k != 'township')) {
+        return _badRequest('A package accepts only city and township');
+      }
+      final city = params['city'];
+      if (city == null ||
+          CityCodes.byNormalizedName(ShelterText.normalizeName(city)) == null) {
+        return _badRequest('A valid city is required');
+      }
+      final township = params['township']?.trim();
+      final all = await service.fetchAllShelters();
+      final rows = service.filterShelters(
+        data: all,
+        city: city,
+        township: township == null || township.isEmpty ? null : township,
+      )..sort((a, b) => a.shelterCode.compareTo(b.shelterCode));
+      if (rows.isEmpty) return _badRequest('No shelters in this region');
+      final data = [for (final row in rows) _toJson(row)];
+      // Content version, not a fetch timestamp. A non-cryptographic checksum is
+      // sufficient: it detects updates, it is not used to authenticate data.
+      var hash = 0x811c9dc5;
+      final content = [
+        for (final item in data)
+          Map<String, dynamic>.of(item)
+            ..remove('id')
+            ..remove('importDate')
+            ..remove('資料取得時間'),
+      ];
+      for (final byte in utf8.encode(jsonEncode(content))) {
+        hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
+      }
+      return _ok({
+        'success': true,
+        ..._dataMeta(),
+        'schemaVersion': 1,
+        'snapshotVersion': 'nfa-v1-${hash.toRadixString(16).padLeft(8, '0')}',
+        'coverage': {
+          'city': rows.first.city,
+          if (township != null && township.isNotEmpty)
+            'township': rows.first.township,
+        },
+        'total': rows.length,
+        'truncated': false,
+        'data': data,
+      });
+    } catch (e, s) {
+      return _serverError('GET /shelters/package', e, s);
+    }
+  }
 
   Future<Response> _getShelters(Request request) async {
     try {
@@ -379,7 +466,35 @@ class ShelterController {
       // the whole dataset — 4.16 MB uncompressed — in a loop.
       final limit = requestedLimit.clamp(0, Env.maxSnapshotItems);
 
-      final filtered = _applyFilters(await service.fetchAllShelters(), query);
+      var filtered = _applyFilters(await service.fetchAllShelters(), query);
+      if (params.containsKey('lat') ||
+          params.containsKey('lng') ||
+          params.containsKey('radius')) {
+        final lat = double.tryParse(params['lat'] ?? '');
+        final lng = double.tryParse(params['lng'] ?? '');
+        final radius = double.tryParse(params['radius'] ?? '');
+        if (lat == null ||
+            lng == null ||
+            !lat.isFinite ||
+            !lng.isFinite ||
+            lat.abs() > 90 ||
+            lng.abs() > 180 ||
+            (params.containsKey('radius') &&
+                (radius == null || !radius.isFinite || radius <= 0))) {
+          return _badRequest(
+            'lat/lng must be valid coordinates and radius must be positive',
+          );
+        }
+        final distances = <Shelter, double>{
+          for (final s in filtered)
+            if (s.hasCoordinate) s: haversineMeters(lat, lng, s.y!, s.x!),
+        };
+        filtered =
+            distances.keys
+                .where((s) => radius == null || distances[s]! <= radius)
+                .toList()
+              ..sort((a, b) => distances[a]!.compareTo(distances[b]!));
+      }
       final paged = filtered.skip(offset).take(limit);
 
       return _ok({
@@ -413,7 +528,7 @@ class ShelterController {
       }
 
       final zoom = double.tryParse(request.url.queryParameters['zoom'] ?? '');
-      if (zoom == null || zoom < 6 || zoom > 19) {
+      if (zoom == null || !zoom.isFinite || zoom < 6 || zoom > 19) {
         return _badRequest('zoom is required and must be between 6 and 19');
       }
 
@@ -512,11 +627,23 @@ class ShelterController {
       final params = request.url.queryParameters;
       final lat = double.tryParse(params['lat'] ?? '');
       final lng = double.tryParse(params['lng'] ?? '');
-      if (lat == null || lng == null) {
+      if (lat == null ||
+          lng == null ||
+          !lat.isFinite ||
+          !lng.isFinite ||
+          lat.abs() > 90 ||
+          lng.abs() > 180) {
         return _badRequest('lat and lng are required and must be numbers');
       }
       final radius = double.tryParse(params['radius'] ?? '');
-      final limit = int.tryParse(params['limit'] ?? '') ?? 10;
+      if (params.containsKey('radius') &&
+          (radius == null || !radius.isFinite || radius <= 0)) {
+        return _badRequest('radius must be a positive finite number');
+      }
+      final limit = (int.tryParse(params['limit'] ?? '') ?? 10).clamp(
+        -1,
+        Env.maxSnapshotItems,
+      );
       if (limit < 0) return _badRequest('limit must not be negative');
 
       final query = _ShelterQuery.from(request);

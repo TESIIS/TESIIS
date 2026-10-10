@@ -13,10 +13,12 @@ RUN flutter pub get
 COPY lib ./lib
 COPY assets ./assets
 COPY web ./web
+COPY tool ./tool
 
 RUN flutter build web --release \
     --base-href /app/ \
     --dart-define=API_BASE_URL=${API_BASE_URL} && \
+    dart run tool/prepare_web.dart && \
     printf '{"sha":"%s"}\n' "${BUILD_SHA}" > /app/build/web/build-info.json
 
 FROM nginx:1.29-alpine AS runtime

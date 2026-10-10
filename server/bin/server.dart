@@ -13,6 +13,7 @@ import 'package:server/data/datasources/local/shelter_snapshot_source.dart';
 import 'package:server/domain/repositories/shelter_repository.dart';
 import 'package:server/presentation/controllers/shelter_controller.dart';
 import 'package:server/presentation/controllers/transit_controller.dart';
+import 'package:server/presentation/controllers/alert_controller.dart';
 
 /// Request logging that records the path but never the query string.
 ///
@@ -94,6 +95,7 @@ Future<void> main(List<String> args) async {
   final apiHandler = Cascade()
       .add(shelterController.router.call)
       .add(transitController.router.call)
+      .add(di.getIt<AlertController>().router.call)
       .handler;
 
   final router = Router()

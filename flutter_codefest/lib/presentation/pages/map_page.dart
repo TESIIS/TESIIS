@@ -5,6 +5,14 @@ import 'package:flutter_codefest/core/constants/map_constants.dart';
 import 'package:flutter_codefest/core/theme/app_status_colors.dart';
 import 'package:flutter_codefest/core/utils/get_platform.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
+import 'package:flutter_codefest/data/models/disaster_alert.dart';
+import 'package:flutter_codefest/presentation/pages/alerts_page.dart';
+import 'package:flutter_codefest/data/datasources/api.dart';
+import 'package:flutter_codefest/data/repositories/preparedness_store.dart';
+import 'package:flutter_codefest/data/repositories/shelter_gateway.dart';
+import 'package:flutter_codefest/presentation/pages/preparedness_page.dart';
+import 'package:flutter_codefest/presentation/widgets/search/region_picker.dart';
+import 'package:flutter_codefest/presentation/widgets/shelter/share_shelter_sheet.dart';
 import 'package:flutter_codefest/domain/marker_clustering.dart';
 import 'package:flutter_codefest/domain/navigation_service.dart';
 import 'package:flutter_codefest/presentation/pages/about_page.dart';
@@ -34,7 +42,8 @@ import 'package:url_launcher/url_launcher.dart';
 /// the `MapController`, the idle-debounce `Timer`, and the search field's
 /// `TextEditingController`.
 class MapPage extends StatefulWidget {
-  const MapPage({super.key});
+  const MapPage({super.key, required this.store});
+  final PreparednessStore store;
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -44,6 +53,11 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
   late final ShelterMapViewModel _viewModel;
+  late final ShelterGateway _gateway;
+  bool _choosingOrigin = false;
+  int _dataRevision = 0;
+  bool _listMode = false;
+  Timer? _searchTimer;
 
   /// MapController throws if it is driven before the map has laid out.
   bool _isMapReady = false;
@@ -76,15 +90,246 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _viewModel = ShelterMapViewModel();
+    _gateway = ShelterGateway(widget.store);
+    _viewModel = ShelterMapViewModel(
+      fetchClusters: _gateway.clusters,
+      fetchShelterPage: _gateway.page,
+      fetchNearby: _gateway.nearby,
+    );
+    _dataRevision = widget.store.dataRevision;
+    _listMode = widget.store.listMode;
+    widget.store.addListener(_onStoreChanged);
     // 一載入就自動定位：_pendingLocateZoom 會在 map 尚未 ready 時
     // 保留想要的縮放，等 _onMapReady 再移動鏡頭。
-    unawaited(_handleLocate());
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    final code = Uri.base.queryParameters['shelter'];
+    if (code != null && code.isNotEmpty) {
+      try {
+        final shelter = await _gateway.detail(code);
+        if (mounted) _onMarkerTapped(shelter);
+      } on ApiException catch (e) {
+        if (mounted) {
+          _showSnackBar(
+            e.statusCode == 404 ? '此連結的地點已不在來源資料中，請搜尋最新地點' : '無法載入分享的地點',
+          );
+        }
+      } catch (_) {
+        if (mounted) _showSnackBar('無法載入此地點，請連線或先保存到裝置');
+      }
+    } else {
+      unawaited(_handleLocate());
+    }
+    if (_listMode) await _viewModel.browseAll();
+  }
+
+  void _onStoreChanged() {
+    if (!mounted) return;
+    final changed = _dataRevision != widget.store.dataRevision;
+    final listChanged = _listMode != widget.store.listMode;
+    _dataRevision = widget.store.dataRevision;
+    _listMode = widget.store.listMode;
+    if (listChanged) {
+      _isMapReady = false;
+      _moveAnimController?.dispose();
+      _moveAnimController = null;
+      _idleTimer?.cancel();
+    }
+    if (_listMode && listChanged) {
+      unawaited(_viewModel.browseAll());
+    } else if (changed) {
+      unawaited(_viewModel.refreshData());
+    }
+    setState(() {});
+  }
+
+  Future<void> _openPreparedness() async {
+    final shelter = await Navigator.push<Shelter>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            PreparednessPage(store: widget.store, gateway: _gateway),
+      ),
+    );
+    if (shelter != null && mounted) _onMarkerTapped(shelter);
+  }
+
+  Future<void> _pickRegion() async {
+    final result = await pickRegion(
+      context,
+      _gateway,
+      city: _viewModel.city,
+      township: _viewModel.township,
+      vulnerable: _viewModel.vulnerableOnly,
+    );
+    if (result == null || !mounted) return;
+    await _viewModel.setRegion(
+      result.city,
+      result.township,
+      vulnerableOnly: result.vulnerable,
+    );
+    _focusQueryResults();
+  }
+
+  Future<void> _openAlerts() async {
+    final region = await Navigator.push<AlertRegion>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AlertsPage(
+          store: widget.store,
+          gateway: _gateway,
+          initialRegion: _viewModel.city == null
+              ? null
+              : AlertRegion(_viewModel.city!, _viewModel.township),
+        ),
+      ),
+    );
+    if (!mounted || region == null) return;
+    _searchTimer?.cancel();
+    _searchController.clear();
+    await _viewModel.browseAlertRegion(region.city, region.township);
+    _focusQueryResults();
+  }
+
+  void _focusQueryResults() {
+    if (!mounted || !_isMapReady) return;
+    final results = _viewModel.searchQuery.isEmpty
+        ? _viewModel.searchPreview
+        : _viewModel.searchResults;
+    final coordinates = results.where((s) => s.hasCoordinate).toList();
+    if (coordinates.isNotEmpty) {
+      _animatedMapMove(
+        LatLng(coordinates.first.latitude!, coordinates.first.longitude!),
+        12,
+      );
+    }
+  }
+
+  Future<void> _setOrigin(LatLng point, {double radius = 3000}) async {
+    setState(() => _choosingOrigin = false);
+    _searchController.clear();
+    _searchTimer?.cancel();
+    await _viewModel.setSearchOrigin(point, radius: radius);
+  }
+
+  Widget _preparationActions(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Material(
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.96),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Wrap(
+          spacing: 2,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            TextButton.icon(
+              onPressed: _openPreparedness,
+              icon: const Icon(Icons.bookmarks_outlined, size: 18),
+              label: const Text('我的避難準備'),
+            ),
+            IconButton(
+              tooltip: '區域災害警報',
+              onPressed: _openAlerts,
+              icon: const Icon(Icons.notifications_active_outlined),
+            ),
+            TextButton.icon(
+              onPressed: _pickRegion,
+              icon: const Icon(Icons.tune, size: 18),
+              label: Text(
+                _viewModel.city == null
+                    ? '行政區與需求'
+                    : '${_viewModel.city}${_viewModel.township ?? ''}',
+              ),
+            ),
+            IconButton(
+              tooltip: _choosingOrigin ? '取消指定地點' : '指定查詢地點',
+              icon: Icon(
+                _choosingOrigin ? Icons.close : Icons.add_location_alt_outlined,
+              ),
+              onPressed: () async {
+                if (widget.store.listMode) {
+                  await saveAction(
+                    context,
+                    () => widget.store.settings(listMode: false),
+                  );
+                }
+                if (mounted) setState(() => _choosingOrigin = !_choosingOrigin);
+              },
+            ),
+            IconButton(
+              tooltip: widget.store.listMode ? '切換地圖模式' : '切換精簡清單',
+              icon: Icon(
+                widget.store.listMode
+                    ? Icons.map_outlined
+                    : Icons.view_list_outlined,
+              ),
+              onPressed: () => saveAction(
+                context,
+                () => widget.store.settings(listMode: !widget.store.listMode),
+              ),
+            ),
+            if (_viewModel.searchOrigin != null)
+              DropdownButton<double>(
+                value: _viewModel.nearbyRadiusMeters,
+                underline: const SizedBox.shrink(),
+                items: [
+                  for (final radius in [500.0, 1000.0, 3000.0, 5000.0])
+                    DropdownMenuItem(
+                      value: radius,
+                      child: Text('附近 ${radius.toInt()}m'),
+                    ),
+                ],
+                onChanged: (radius) {
+                  if (radius != null) {
+                    _setOrigin(_viewModel.searchOrigin!, radius: radius);
+                  }
+                },
+              ),
+            if (_viewModel.searchOrigin != null)
+              InputChip(
+                label: const Text('指定位置'),
+                onDeleted: _viewModel.clearSearchOrigin,
+                deleteButtonTooltipMessage: '清除指定位置',
+              ),
+            if (_viewModel.vulnerableOnly)
+              InputChip(
+                label: const Text('適合弱者安置'),
+                onDeleted: () => _viewModel.setRegion(
+                  _viewModel.city,
+                  _viewModel.township,
+                  vulnerableOnly: false,
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget? _offlineNotice() {
+    if (widget.store.offlineMode ||
+        _gateway.localOnly ||
+        _gateway.usedOffline ||
+        _viewModel.isOfflineData) {
+      return StatusBanner(
+        tone: StatusTone.info,
+        icon: Icons.offline_pin_outlined,
+        message: widget.store.packages.isEmpty
+            ? '離線中，尚未下載區域資料'
+            : '離線資料範圍：${widget.store.coverageLabel}。範圍外不代表沒有避難所；底圖與即時交通需連線。',
+      );
+    }
+    return null;
   }
 
   @override
   void dispose() {
     _idleTimer?.cancel();
+    _searchTimer?.cancel();
+    widget.store.removeListener(_onStoreChanged);
     _moveAnimController?.dispose();
     _searchController.dispose();
     _mapController.dispose();
@@ -98,7 +343,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
 
   void _onMapReady() {
     _isMapReady = true;
-    final here = _viewModel.currentLatLng;
+    final here = _viewModel.queryOrigin;
     if (here != null) {
       _mapController.move(
         here,
@@ -112,6 +357,9 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       _mapController.camera.visibleBounds,
       _mapController.camera.zoom,
     );
+    if (_viewModel.selectedShelter != null) {
+      _onMarkerTapped(_viewModel.selectedShelter!);
+    }
   }
 
   /// Fires continuously while the map moves, so the real work is debounced
@@ -138,6 +386,10 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   }
 
   void _onMapTap(TapPosition tapPosition, LatLng point) {
+    if (_choosingOrigin) {
+      unawaited(_setOrigin(point));
+      return;
+    }
     if (!_viewModel.isSearching && !_viewModel.showShelterDetails) return;
     if (_viewModel.isSearching) _searchController.clear();
     _viewModel.dismissOverlays();
@@ -271,10 +523,9 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   }
 
   Future<void> _showClusterMembers(ShelterCluster cluster) async {
-    final members = await _viewModel.fetchClusterMembers(
-      cluster.center,
-      cluster.count,
-    );
+    final members = cluster.members.isNotEmpty
+        ? cluster.members
+        : await _viewModel.fetchClusterMembers(cluster.center, cluster.count);
     if (!mounted) return;
     if (members.isEmpty) {
       _showSnackBar('無法載入這個群集的避難所');
@@ -293,12 +544,21 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   // ---------------------------------------------------------------------
 
   void _toggleSearch() {
+    _searchTimer?.cancel();
     final wasSearching = _viewModel.isSearching;
     _viewModel.toggleSearching();
     if (wasSearching) _searchController.clear();
   }
 
   Future<void> _onSearch(String query) async {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(
+      const Duration(milliseconds: 300),
+      () => _performSearch(query),
+    );
+  }
+
+  Future<void> _performSearch(String query) async {
     try {
       await _viewModel.search(query);
     } catch (e) {
@@ -316,6 +576,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     await _viewModel.getCurrentLocation(
       radiusMeters: MapConstants.nearbyRadiusForZoom(targetZoom),
     );
+    if (!mounted || _viewModel.searchOrigin != null) return;
     final here = _viewModel.currentLatLng;
     if (here == null) return;
     if (_isMapReady) {
@@ -374,6 +635,8 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final colorScheme = Theme.of(context).colorScheme;
     final vm = _viewModel;
 
+    if (widget.store.listMode) return _buildListContent(context);
+
     if (vm.selectedShelter != null) _lastSelectedShelter = vm.selectedShelter;
     if (vm.currentPosition != null && vm.nearbyShelters.isNotEmpty) {
       _lastNearestShelter = vm.nearbyShelters.first;
@@ -402,6 +665,23 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       onTap: _onMarkerTapped,
       onClusterTap: _onClusterTapped,
     );
+    if (vm.searchOrigin case final origin?) {
+      markers.add(
+        Marker(
+          point: origin,
+          width: 44,
+          height: 44,
+          child: const Tooltip(
+            message: '指定查詢地點',
+            child: Icon(
+              Icons.location_searching,
+              color: Colors.deepOrange,
+              size: 36,
+            ),
+          ),
+        ),
+      );
+    }
 
     final isWide =
         MediaQuery.of(context).size.width >= MapConstants.desktopBreakpoint;
@@ -414,6 +694,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
 
     final nearbyPanelWanted =
         vm.currentPosition != null &&
+        vm.searchOrigin == null &&
         vm.nearbyShelters.isNotEmpty &&
         (isWide || !vm.showShelterDetails) &&
         !vm.isSearching;
@@ -422,8 +703,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         vm.nearbyShelters.first.shelterId == _nearbyPanelDismissedFor;
     final nearbyPanelVisible = nearbyPanelWanted && !nearbyPanelDismissed;
 
-    final hasFilters =
-        vm.selectedDisasterTypes.isNotEmpty || vm.selectedSpaceTypes.isNotEmpty;
+    final hasFilters = vm.hasFilters;
 
     final cornerButtonsBottom = isWide ? 16.0 : 380.0;
 
@@ -437,6 +717,8 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
             onMapReady: _onMapReady,
             onPositionChanged: _onPositionChanged,
             onTap: _onMapTap,
+            onChooseOrigin: (_, point) => _setOrigin(point),
+            tilesEnabled: !widget.store.offlineMode && !_gateway.localOnly,
           ),
         ),
         // Desktop only: mobile has no room for this beside the map, and the
@@ -532,6 +814,20 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
                 onLocate: _handleLocate,
                 onSearchChanged: _onSearch,
               ),
+              _preparationActions(context),
+              if (_choosingOrigin)
+                const StatusBanner(
+                  tone: StatusTone.info,
+                  icon: Icons.touch_app,
+                  message: '點選地圖上的位置，查詢附近避難所。也可長按或右鍵指定位置。',
+                ),
+              if (_offlineNotice() case final notice?) notice,
+              if (widget.store.storageError case final error?)
+                StatusBanner(
+                  tone: StatusTone.danger,
+                  icon: Icons.storage,
+                  message: error,
+                ),
 
               _animatedSlot(
                 vm.isShowingCachedData
@@ -583,11 +879,13 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
               _animatedSlot(
                 vm.isSearching &&
                         (vm.searchQuery.isNotEmpty ||
-                            vm.searchPreview.isNotEmpty)
+                            vm.searchPreview.isNotEmpty ||
+                            vm.hasFilters ||
+                            vm.searchOrigin != null)
                     ? Container(
                         margin: const EdgeInsets.only(top: 8),
                         constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.6,
+                          maxHeight: MediaQuery.of(context).size.height * 0.4,
                         ),
                         // Material, not a plain Container+BoxDecoration: the
                         // list inside is made of ListTiles, which paint their
@@ -606,15 +904,22 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
                           child: vm.searchQuery.isEmpty
                               ? SearchResultsList(
                                   shelters: vm.searchPreview,
-                                  total: vm.searchPreview.length,
-                                  hasMore: false,
-                                  isLoadingMore: false,
+                                  total: vm.queryOrigin == null
+                                      ? vm.searchTotal
+                                      : vm.searchPreview.length,
+                                  hasMore:
+                                      vm.queryOrigin == null &&
+                                      vm.searchHasMore,
+                                  isLoadingMore: vm.isLoadingMore,
                                   hasFilters: hasFilters,
                                   currentPosition: vm.currentPosition,
+                                  searchOrigin: vm.searchOrigin,
                                   selectedShelter: vm.selectedShelter,
-                                  previewLabel: '距離最近的避難所',
+                                  previewLabel: vm.queryOrigin == null
+                                      ? null
+                                      : '符合條件的鄰近地點（最多 50 筆）',
                                   onSelect: _onSearchResultSelected,
-                                  onLoadMore: () {},
+                                  onLoadMore: vm.loadMoreSearch,
                                 )
                               : SearchResultsList(
                                   shelters: vm.searchResults,
@@ -623,6 +928,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
                                   isLoadingMore: vm.isLoadingMore,
                                   hasFilters: hasFilters,
                                   currentPosition: vm.currentPosition,
+                                  searchOrigin: vm.searchOrigin,
                                   selectedShelter: vm.selectedShelter,
                                   onSelect: _onSearchResultSelected,
                                   onLoadMore: vm.loadMoreSearch,
@@ -649,6 +955,12 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
             currentPosition: vm.currentPosition,
             onClose: vm.clearSelection,
             onNavigate: () => _openNavigation(_lastSelectedShelter!),
+            onFavorite: () =>
+                editFavorite(context, widget.store, _lastSelectedShelter!),
+            isFavorite:
+                widget.store.favorite(_lastSelectedShelter!.shelterId) != null,
+            onShare: () => showShelterShare(context, _lastSelectedShelter!),
+            showTransit: !_gateway.localOnly && !_gateway.usedOffline,
             wide: isWide,
             visible: vm.showShelterDetails && vm.selectedShelter != null,
           ),
@@ -669,6 +981,81 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         if (nearbyPanelDismissed)
           NearbyPanelReopenButton(
             onTap: () => setState(() => _nearbyPanelDismissedFor = null),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildListContent(BuildContext context) {
+    final vm = _viewModel;
+    final shelters = vm.searchQuery.isEmpty
+        ? vm.searchPreview
+        : vm.searchResults;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: SearchToolbar(
+                  controller: _searchController,
+                  isSearching: vm.isSearching,
+                  isLoadingLocation: vm.isLoadingLocation,
+                  onToggleSearch: () {
+                    _searchTimer?.cancel();
+                    _searchController.clear();
+                    if (!vm.isSearching) vm.toggleSearching();
+                    unawaited(vm.search(''));
+                  },
+                  onLocate: _handleLocate,
+                  onSearchChanged: _onSearch,
+                  closeLabel: '清除搜尋',
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: _preparationActions(context),
+              ),
+              if (_offlineNotice() case final notice?) notice,
+              FilterChipBar(
+                isSelected: vm.isFilterSelected,
+                onToggle: vm.toggleFilter,
+              ),
+              Expanded(
+                child: SearchResultsList(
+                  shelters: shelters,
+                  total: vm.searchQuery.isEmpty && vm.queryOrigin != null
+                      ? shelters.length
+                      : vm.searchTotal,
+                  hasMore:
+                      (vm.searchQuery.isNotEmpty || vm.queryOrigin == null) &&
+                      vm.searchHasMore,
+                  isLoadingMore: vm.isLoadingMore,
+                  hasFilters: vm.hasFilters,
+                  currentPosition: vm.currentPosition,
+                  searchOrigin: vm.searchOrigin,
+                  selectedShelter: vm.selectedShelter,
+                  onSelect: _onMarkerTapped,
+                  onLoadMore: vm.loadMoreSearch,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (vm.selectedShelter case final shelter?)
+          ShelterDetailSheet(
+            shelter: shelter,
+            currentPosition: vm.currentPosition,
+            onClose: vm.clearSelection,
+            onNavigate: () => _openNavigation(shelter),
+            onFavorite: () => editFavorite(context, widget.store, shelter),
+            isFavorite: widget.store.favorite(shelter.shelterId) != null,
+            onShare: () => showShelterShare(context, shelter),
+            showTransit: !_gateway.localOnly && !_gateway.usedOffline,
+            wide:
+                MediaQuery.sizeOf(context).width >=
+                MapConstants.desktopBreakpoint,
           ),
       ],
     );

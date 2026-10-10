@@ -33,6 +33,7 @@ ShelterMapViewModel _viewModel({
     int limit,
     Set<String>? disasters,
     Set<String>? spaces,
+    Map<String, String>? scope,
   })?
   nearby,
   Future<CachedResponse?> Function(String key)? cacheGet,
@@ -53,6 +54,7 @@ ShelterMapViewModel _viewModel({
         limit = 10,
         disasters,
         spaces,
+        scope,
       }) async => const [],
   isLocationServiceEnabled: () async => false,
   getLastKnownPosition: getLastKnownPosition ?? () async => null,
@@ -61,6 +63,141 @@ ShelterMapViewModel _viewModel({
 );
 
 void main() {
+  group('query origin and consistent filters', () {
+    test(
+      'bulletin region resets unrelated keyword, radius and filters',
+      () async {
+        Map<String, String>? lastPage;
+        final vm = _viewModel(
+          page: (params) async {
+            lastPage = params;
+            return ShelterPage(
+              shelters: [fakeShelter(id: 1, city: '高雄市', district: '苓雅區')],
+              total: 1,
+              truncated: false,
+            );
+          },
+        );
+        await vm.setSearchOrigin(const LatLng(25, 121.5), radius: 500);
+        vm.toggleFilter('flood');
+        await vm.search('不相關關鍵字');
+        await vm.browseAlertRegion('高雄市', '苓雅區');
+        expect(vm.searchOrigin, isNull);
+        expect(vm.searchQuery, isEmpty);
+        expect(vm.selectedDisasterTypes, isEmpty);
+        expect(lastPage, containsPair('city', '高雄市'));
+        expect(lastPage, containsPair('township', '苓雅區'));
+        expect(lastPage!.containsKey('radius'), false);
+        expect(lastPage!.containsKey('q'), false);
+        vm.dispose();
+      },
+    );
+    test(
+      'manual origin works without GPS and scopes every nearby request',
+      () async {
+        final requests = <Map<String, dynamic>>[];
+        final vm = _viewModel(
+          nearby:
+              ({
+                required lat,
+                required lng,
+                radiusMeters,
+                limit = 10,
+                disasters,
+                spaces,
+                scope,
+              }) async {
+                requests.add({
+                  'lat': lat,
+                  'lng': lng,
+                  'radius': radiusMeters,
+                  'disasters': disasters,
+                  'spaces': spaces,
+                  'scope': scope,
+                });
+                return [fakeShelter(id: 1, lat: lat, lng: lng)];
+              },
+        );
+        await vm.setRegion('臺北市', '中正區', vulnerableOnly: true);
+        vm.toggleFilter('flood');
+        vm.toggleFilter('indoor');
+        await vm.setSearchOrigin(const LatLng(25, 121.5), radius: 1000);
+        expect(vm.currentPosition, isNull);
+        expect(vm.searchOrigin, const LatLng(25, 121.5));
+        expect(vm.nearbyShelters, hasLength(1));
+        expect(requests.last['radius'], 1000);
+        expect(requests.last['disasters'], {'flood'});
+        expect(requests.last['spaces'], {'indoor'});
+        expect(requests.last['scope'], {
+          'city': '臺北市',
+          'township': '中正區',
+          'vulnerable': 'Y',
+        });
+        await vm.refreshNearbyShelters(radiusMeters: 5000);
+        expect(
+          vm.nearbyRadiusMeters,
+          1000,
+          reason: 'map zoom must not change an explicitly chosen radius',
+        );
+        vm.dispose();
+      },
+    );
+
+    test('a late GPS fix does not replace a manually chosen origin', () async {
+      final fix = Completer<Position>();
+      final vm = ShelterMapViewModel(
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => LocationPermission.always,
+        getLastKnownPosition: () async => null,
+        getCurrentPosition: () => fix.future,
+        fetchNearby:
+            ({
+              required lat,
+              required lng,
+              radiusMeters,
+              limit = 10,
+              disasters,
+              spaces,
+              scope,
+            }) async => [],
+        fetchShelterPage: (_) async =>
+            const ShelterPage(shelters: [], total: 0, truncated: false),
+        fetchClusters: (_) async => const ClusterPage(clusters: []),
+        cacheGet: (_) async => null,
+        cachePut: (_, _) async {},
+      );
+      final locating = vm.getCurrentLocation(radiusMeters: 1500);
+      await Future<void>.delayed(Duration.zero);
+      await vm.setSearchOrigin(const LatLng(22.6, 120.3), radius: 3000);
+      fix.complete(fakePosition(lat: 25, lng: 121.5));
+      await locating;
+      expect(vm.currentPosition!.latitude, 25);
+      expect(vm.searchOrigin!.latitude, 22.6);
+      expect(vm.nearbyRadiusMeters, 3000);
+      vm.dispose();
+    });
+
+    test(
+      'typed search around a manual origin carries radius and region',
+      () async {
+        Map<String, String>? sent;
+        final vm = _viewModel(
+          page: (params) async {
+            sent = params;
+            return const ShelterPage(shelters: [], total: 0, truncated: false);
+          },
+        );
+        await vm.setRegion('高雄市', null);
+        await vm.setSearchOrigin(const LatLng(22.6, 120.3));
+        await vm.search('國小');
+        expect(sent, containsPair('city', '高雄市'));
+        expect(sent, containsPair('lat', '22.6'));
+        expect(sent, containsPair('radius', '3000.0'));
+        vm.dispose();
+      },
+    );
+  });
+
   group('loadClusters', () {
     test('stores the clusters the server returned', () async {
       final near = fakeShelter(id: 1, lat: 25.0, lng: 121.5);
@@ -357,6 +494,7 @@ void main() {
         int limit,
         Set<String>? disasters,
         Set<String>? spaces,
+        Map<String, String>? scope,
       })
       nearby,
     }) async {
@@ -390,6 +528,7 @@ void main() {
                 limit = 10,
                 disasters,
                 spaces,
+                scope,
               }) async => [near],
         );
 
@@ -411,6 +550,7 @@ void main() {
               limit = 10,
               disasters,
               spaces,
+              scope,
             }) async => [near],
       );
 
@@ -515,6 +655,7 @@ void main() {
               limit = 10,
               disasters,
               spaces,
+              scope,
             }) async => const [],
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.denied,
@@ -548,6 +689,7 @@ void main() {
               limit = 10,
               disasters,
               spaces,
+              scope,
             }) async {
               nearbyCall = {
                 'lat': lat,
@@ -588,6 +730,7 @@ void main() {
               limit = 10,
               disasters,
               spaces,
+              scope,
             }) async => const [],
         isLocationServiceEnabled: () async => true,
         checkPermission: () async => LocationPermission.always,
@@ -619,6 +762,7 @@ void main() {
               limit = 10,
               disasters,
               spaces,
+              scope,
             }) async {
               radii.add(radiusMeters ?? 0);
               return [fakeShelter(id: radii.length, lat: lat, lng: lng)];

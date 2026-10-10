@@ -15,6 +15,8 @@ class ShelterMapView extends StatelessWidget {
     required this.onMapReady,
     required this.onPositionChanged,
     required this.onTap,
+    this.onChooseOrigin,
+    this.tilesEnabled = true,
   });
 
   final MapController mapController;
@@ -23,6 +25,8 @@ class ShelterMapView extends StatelessWidget {
   final VoidCallback onMapReady;
   final void Function(MapCamera camera, bool hasGesture) onPositionChanged;
   final void Function(TapPosition tapPosition, LatLng point) onTap;
+  final void Function(TapPosition tapPosition, LatLng point)? onChooseOrigin;
+  final bool tilesEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -36,9 +40,11 @@ class ShelterMapView extends StatelessWidget {
         onMapReady: onMapReady,
         onPositionChanged: onPositionChanged,
         onTap: onTap,
+        onLongPress: onChooseOrigin,
+        onSecondaryTap: onChooseOrigin,
       ),
       children: [
-        basemapTileLayer(basemap),
+        if (tilesEnabled) basemapTileLayer(basemap),
         MarkerLayer(markers: markers),
         // Required by the NLSC terms of use wherever their tiles are shown.
         const RichAttributionWidget(

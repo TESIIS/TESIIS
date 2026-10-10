@@ -13,6 +13,7 @@ class SearchToolbar extends StatelessWidget {
     required this.onToggleSearch,
     required this.onLocate,
     required this.onSearchChanged,
+    this.closeLabel = '關閉搜尋',
   });
 
   final TextEditingController controller;
@@ -21,6 +22,7 @@ class SearchToolbar extends StatelessWidget {
   final VoidCallback onToggleSearch;
   final VoidCallback onLocate;
   final ValueChanged<String> onSearchChanged;
+  final String closeLabel;
 
   static Widget _crossFade(Widget child, Animation<double> animation) {
     return FadeTransition(
@@ -118,7 +120,7 @@ class SearchToolbar extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: isSearching ? '關閉搜尋' : '搜尋',
+            tooltip: isSearching ? closeLabel : '搜尋',
             icon: AnimatedSwitcher(
               duration: _kToggleDuration,
               transitionBuilder: (child, animation) => RotationTransition(

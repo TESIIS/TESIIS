@@ -93,6 +93,14 @@ dart run tool/build_nationwide_snapshot.dart --refresh --report  # 重新下載�
 
 ## 二、執行期呼叫的外部服務
 
+### NCDR 民生示警公開資料平台
+
+區域警報使用國家災害防救科技中心的 [Atom 清單](https://alerts.ncdr.nat.gov.tw/RssAtomFeed.ashx) 與清單所連結的公開 CAP 檔案，原始平台為 <https://alerts.ncdr.nat.gov.tw/>。2026-10-10 實際核對時，Atom 的 `rights` 欄位標示為 `Public Domain`。各公告仍保留原發布機關、發布時間、有效期限與原始 CAP／官方說明連結；個別來源的使用說明請參閱原公告。
+
+執行期只呈現 CAP `status=Actual` 且 `scope=Public` 的資料。資料於記憶體短期快取，客戶端可保存最近一次查詢，但不將這些短時效公告放入避難所的長期離線資料包。測試使用自行建立的合成公告，沒有把當日真實警報當作永久快照散布。
+
+格式處理依據 [OASIS CAP 1.2](https://docs.oasis-open.org/emergency/cap/v1.2/CAP-v1.2-os.html)，亦接受平台 Atom 使用的 CAP 1.1 延伸欄位。
+
 ### 內政部消防署 避難收容處所點位檔（主資料源）
 
 Server 執行期向 `Env.nfaPointFileUrl`（預設為內政部 `opdadm.moi.gov.tw` 的資源下載端點）取得全國點位檔，授權為**政府資料開放授權條款第 1 版**。取得後於記憶體快取 `CACHE_TTL_SECONDS`（預設 600 秒）。
@@ -142,6 +150,7 @@ App 的「開始導航」按鈕以 `url_launcher` 開啟 `https://www.google.com
 | `shelf` / `shelf_router` / `shelf_cors_headers` | BSD-3-Clause / MIT |
 | `get_it` | MIT |
 | `http` / `logging` | BSD-3-Clause |
+| `xml` | MIT |
 
 ### 字型
 

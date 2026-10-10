@@ -166,6 +166,11 @@ class Env {
   static String get logLevel =>
       (_read('LOG_LEVEL') ?? defaultLogLevel).toLowerCase();
 
+  static const defaultAlertFeedUrl =
+      'https://alerts.ncdr.nat.gov.tw/RssAtomFeed.ashx';
+  static String get alertFeedUrl =>
+      _read('ALERT_FEED_URL') ?? defaultAlertFeedUrl;
+
   /// TDX OAuth2 client-credentials token endpoint.
   static const tdxAuthUrl =
       'https://tdx.transportdata.tw/auth/realms/TDXConnect/'

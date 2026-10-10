@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_codefest/core/utils/nearby_shelters.dart';
 import 'package:flutter_codefest/data/models/shelter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 
 /// The result-count summary plus the scrollable list of matching shelters
 /// shown under the search bar. Loads the next page when scrolled to the
@@ -19,6 +20,7 @@ class SearchResultsList extends StatelessWidget {
     required this.onSelect,
     required this.onLoadMore,
     this.previewLabel,
+    this.searchOrigin,
   });
 
   final List<Shelter> shelters;
@@ -31,6 +33,7 @@ class SearchResultsList extends StatelessWidget {
   final bool isLoadingMore;
   final bool hasFilters;
   final Position? currentPosition;
+  final LatLng? searchOrigin;
   final Shelter? selectedShelter;
   final ValueChanged<Shelter> onSelect;
   final VoidCallback onLoadMore;
@@ -87,8 +90,9 @@ class SearchResultsList extends StatelessWidget {
                 final shelter = shelters[index];
                 return _ShelterResultTile(
                   shelter: shelter,
-                  isSelected: selectedShelter?.name == shelter.name,
+                  isSelected: selectedShelter?.shelterId == shelter.shelterId,
                   currentPosition: currentPosition,
+                  searchOrigin: searchOrigin,
                   onTap: () => onSelect(shelter),
                 );
               },
@@ -202,11 +206,13 @@ class _ShelterResultTile extends StatelessWidget {
     required this.isSelected,
     required this.currentPosition,
     required this.onTap,
+    this.searchOrigin,
   });
 
   final Shelter shelter;
   final bool isSelected;
   final Position? currentPosition;
+  final LatLng? searchOrigin;
   final VoidCallback onTap;
 
   /// Nationwide there are many facilities that share a generic name
@@ -225,14 +231,18 @@ class _ShelterResultTile extends StatelessWidget {
     // These facilities exist, they just have no coordinate on record — still
     // listed, with an external map offered instead.
     if (!shelter.hasCoordinate) return '尚無座標';
-    final position = currentPosition;
+    final position =
+        searchOrigin ??
+        (currentPosition == null
+            ? null
+            : LatLng(currentPosition!.latitude, currentPosition!.longitude));
     if (position == null) return '距離未知';
     final meters = distanceToShelter(
       shelter,
       position.latitude,
       position.longitude,
     );
-    return '距離 ${(meters / 1000).toStringAsFixed(2)} km';
+    return '${searchOrigin == null ? '直線距離' : '距查詢點'} ${(meters / 1000).toStringAsFixed(2)} km';
   }
 
   @override
