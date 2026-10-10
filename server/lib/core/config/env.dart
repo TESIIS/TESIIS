@@ -12,7 +12,7 @@ import 'dart:io';
 class Env {
   static const defaultBaseUrl = "https://data.taipei/api/v1/dataset";
 
-  /// 臺北市可供避難收容處所一覽表 — 401 records, no coordinate columns.
+  /// 臺北市可供避難收容處所一覽表 — no coordinate columns.
   static const shelterDatasetId = '4c92dbd4-d259-495a-8390-52628119a4dd';
 
   /// 北市警政APP_防空避難設備位置 — 6052 records that *do* carry 座標x/座標y.
@@ -29,10 +29,10 @@ class Env {
 
   /// How long an upstream fetch stays fresh. The dataset is republished a few
   /// times a year, so anything on this scale is generous; the point is to stop
-  /// re-downloading 401 records on every single request.
+  /// re-downloading hundreds of records on every single request.
   static const defaultCacheTtlSeconds = 600;
 
-  /// Upper bound on records pulled from upstream. The dataset holds 401, so
+  /// Upper bound on records pulled from upstream. The dataset holds hundreds, so
   /// this is only a runaway guard.
   static const maxUpstreamItems = 3000;
 

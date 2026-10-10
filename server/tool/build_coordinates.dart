@@ -5,7 +5,7 @@
 //
 // Why this exists
 // ---------------
-// 臺北市 OpenData dataset 4c92dbd4 (可供避難收容處所一覽表, 401 records) has no
+// 臺北市 OpenData dataset 4c92dbd4 (可供避難收容處所一覽表) has no
 // coordinate columns — verified against every record. Previously the server
 // read coordinates from a SQLite file that was gitignored and shipped with no
 // way to regenerate it, so a fresh clone always rendered an empty map.
@@ -24,8 +24,7 @@
 // --overpass additionally queries OpenStreetMap for whatever is left over. It
 // is opt-in and the committed table is NOT built with it: OSM is ODbL, which is
 // share-alike, so one run would put the whole CSV under a copyleft licence. The
-// committed table trades 2.5 points of coverage (92.3% instead of 94.8%) for a
-// licence that is purely 政府資料開放授權條款第 1 版. Do not flip this default
+// committed table uses only government-licensed sources. Do not flip this default
 // without updating NOTICE.md and README.md.
 
 import 'dart:convert';
@@ -34,9 +33,14 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:server/core/csv/csv_codec.dart';
 import 'package:server/core/geo/taipei_bounds.dart';
+import 'package:server/core/http/retry_get.dart';
+import 'package:server/data/datasources/external/taipei_shelter_resource.dart';
 import 'package:server/domain/entities/shelter_fields.dart';
 
 const _shelterDataset = '4c92dbd4-d259-495a-8390-52628119a4dd';
+const _shelterResourceUrl =
+    'https://data.taipei/api/frontstage/tpeod/dataset/resource.download'
+    '?rid=$_shelterDataset';
 const _airRaidDataset = '39ca53a1-c861-40bc-b329-fc9b28c10e01';
 const _nfaPointFile =
     'https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/'
@@ -70,16 +74,13 @@ Future<void> main(List<String> args) async {
   final showReport = args.contains('--report') || useOverpass;
   final refresh = args.contains('--refresh');
   final output = _flagValue(args, '--output') ?? _defaultOutput;
+  final reviewOutput =
+      _flagValue(args, '--review-output') ?? _defaultReviewOutput;
 
   final client = http.Client();
   try {
     stdout.writeln('==> Fetching 避難收容處所 (dataset $_shelterDataset)');
-    final shelters = await _fetchTaipeiDataset(
-      client,
-      _shelterDataset,
-      cacheName: 'shelters.json',
-      refresh: refresh,
-    );
+    final shelters = await _fetchShelters(client, refresh: refresh);
     stdout.writeln('    ${shelters.length} records');
 
     stdout.writeln('==> Fetching 防空避難設備位置 (dataset $_airRaidDataset)');
@@ -124,9 +125,9 @@ Future<void> main(List<String> args) async {
         .where((r) => r.hasCoordinate && r.confidence != 'exact')
         .toList();
     if (needsReview.isNotEmpty) {
-      _writeCsv(_defaultReviewOutput, needsReview);
+      _writeCsv(reviewOutput, needsReview);
       stdout.writeln(
-        '==> Wrote $_defaultReviewOutput '
+        '==> Wrote $reviewOutput '
         '(${needsReview.length} rows needing human confirmation)',
       );
     }
@@ -147,6 +148,33 @@ String? _flagValue(List<String> args, String flag) {
 // Fetching
 // ---------------------------------------------------------------------------
 
+Future<List<Map<String, dynamic>>> _fetchShelters(
+  http.Client client, {
+  required bool refresh,
+}) async {
+  try {
+    final apiRows = await _fetchTaipeiDataset(
+      client,
+      _shelterDataset,
+      cacheName: 'shelters.json',
+      refresh: refresh,
+    );
+    return validateTaipeiShelterRows(apiRows);
+  } on FormatException catch (error) {
+    stderr.writeln('Taipei API schema is unusable: $error');
+    stderr.writeln(
+      '::warning::Taipei API schema is unusable; reading the published source file instead.',
+    );
+  }
+
+  final response = await getWithRetry(client, Uri.parse(_shelterResourceUrl));
+  final rows = decodeTaipeiShelterResource(response.bodyBytes);
+  final cache = File('$_cacheDir/shelters.json');
+  cache.parent.createSync(recursive: true);
+  cache.writeAsStringSync(jsonEncode(rows));
+  return rows;
+}
+
 Future<String> _cachedGet(
   http.Client client,
   String url, {
@@ -158,10 +186,7 @@ Future<String> _cachedGet(
     stdout.writeln('    (cached: ${file.path})');
     return file.readAsStringSync();
   }
-  final response = await client.get(Uri.parse(url));
-  if (response.statusCode != 200) {
-    throw HttpException('GET $url failed: HTTP ${response.statusCode}');
-  }
+  final response = await getWithRetry(client, Uri.parse(url));
   // Government exports are UTF-8 but do not always say so in Content-Type,
   // which would make the http package fall back to latin-1 and mangle 中文.
   final body = utf8.decode(response.bodyBytes);
@@ -196,10 +221,7 @@ Future<List<Map<String, dynamic>>> _fetchTaipeiDataset(
             'offset': '$offset',
           },
         );
-    final response = await client.get(uri);
-    if (response.statusCode != 200) {
-      throw HttpException('GET $uri failed: HTTP ${response.statusCode}');
-    }
+    final response = await getWithRetry(client, uri);
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     final batch = ((decoded['result']?['results']) as List? ?? const [])
         .cast<Map<String, dynamic>>();
@@ -651,13 +673,31 @@ out center;
 
 void _writeCsv(String path, List<_Row> rows) {
   final today = DateTime.now().toIso8601String().substring(0, 10);
+  final committed = File(_defaultOutput);
+  final previousByCode = committed.existsSync()
+      ? {
+          for (final row in parseCsvAsMaps(committed.readAsStringSync()))
+            row['shelter_code'] ?? '': row,
+        }
+      : <String, Map<String, String>>{};
   final buffer = StringBuffer()..writeln(encodeCsvRow(_csvHeader));
   // Sort by shelter code so a rebuild produces a reviewable diff rather than a
   // reshuffled file.
   final sorted = [...rows]
     ..sort((a, b) => a.shelterCode.compareTo(b.shelterCode));
   for (final row in sorted) {
-    buffer.writeln(encodeCsvRow(row.toCsvFields(today)));
+    final fields = row.toCsvFields(today);
+    final previous = previousByCode[row.shelterCode];
+    if (previous != null &&
+        _csvHeader
+            .take(7)
+            .toList()
+            .asMap()
+            .entries
+            .every((entry) => previous[entry.value] == fields[entry.key])) {
+      fields[7] = previous['updated_at'] ?? today;
+    }
+    buffer.writeln(encodeCsvRow(fields));
   }
   final file = File(path);
   file.parent.createSync(recursive: true);

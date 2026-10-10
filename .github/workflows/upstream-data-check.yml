@@ -37,11 +37,12 @@ jobs:
       # to notice when upstream itself has changed.
       - name: Rebuild nationwide snapshot from live data
         run: |
+          set -euo pipefail
           dart run tool/build_nationwide_snapshot.dart \
             --refresh --report \
             --output /tmp/shelters_nationwide.csv \
             --rejected-output /tmp/shelters_rejected.csv \
-            | tee /tmp/nationwide-report.txt
+            2>&1 | tee /tmp/nationwide-report.txt
 
       - name: Diff against the committed snapshot
         run: |
@@ -109,9 +110,12 @@ jobs:
       # schema change shows up in the report.
       - name: Rebuild coordinate table from live data
         run: |
+          set -euo pipefail
           dart run tool/build_coordinates.dart \
             --refresh --report \
-            --output /tmp/shelter_coordinates.csv | tee /tmp/report.txt
+            --output /tmp/shelter_coordinates.csv \
+            --review-output /tmp/coordinates_needs_review.csv \
+            2>&1 | tee /tmp/report.txt
 
       - name: Fail if coverage regressed
         run: |
@@ -119,10 +123,14 @@ jobs:
           coverage=$(grep -oE 'With coordinates:.*\(([0-9.]+)%\)' /tmp/report.txt \
                      | grep -oE '[0-9.]+%' | tr -d '%')
           echo "Live coverage: ${coverage}%"
-          # The committed table sits at ~92.3%; anything under 85% means
-          # upstream changed in a way that broke the address join.
+          # A large drop usually means the address join or source format broke.
           awk -v c="$coverage" 'BEGIN { exit (c >= 85) ? 0 : 1 }' \
             || { echo "::error::Coordinate coverage fell to ${coverage}%"; exit 1; }
+          live_count=$(awk '/^Shelters:/ { print $2 }' /tmp/report.txt)
+          committed_count=$(($(wc -l < data/shelter_coordinates.csv) - 1))
+          awk -v live="$live_count" -v prior="$committed_count" \
+            'BEGIN { exit (live >= prior * 0.8) ? 0 : 1 }' \
+            || { echo "::error::Taipei shelter count fell from ${committed_count} to ${live_count}"; exit 1; }
 
       - name: Diff against the committed table
         run: |
@@ -133,3 +141,14 @@ jobs:
             echo "  cd server && dart run tool/build_coordinates.dart --refresh --report"
             diff data/shelter_coordinates.csv /tmp/shelter_coordinates.csv | head -40 || true
           fi
+
+      - name: Upload Taipei report and coordinate tables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: taipei-coordinate-report
+          path: |
+            /tmp/report.txt
+            /tmp/shelter_coordinates.csv
+            /tmp/coordinates_needs_review.csv
+          retention-days: 90
